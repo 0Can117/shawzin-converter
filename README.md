@@ -13,6 +13,6 @@ This project is not an official fork of or affiliated with the original project 
 
 **License:** GNU Affero General Public License v3.0 (AGPL-3.0).
 
-**Disclaimer**
+## **Disclaimer**
 
 Warframe, Shawzin and all related names, logos and game content are trademarks or property of Digital Extremes Ltd. This project is an unofficial fan-made tool. It is not affiliated with, endorsed by or sponsored by Digital Extremes, and it does not include or distribute any game assets.
