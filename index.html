@@ -17,7 +17,7 @@ section{background:var(--card);border:1px solid var(--bd);border-radius:10px;pad
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
 label{display:block;font-size:14px;color:var(--mut)}
 label.row{display:flex;gap:8px;align-items:center;color:var(--fg);margin:4px 0}
-input[type=number],select,textarea{width:100%;margin-top:4px;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+input[type=number],input[type=text],select,textarea{width:100%;margin-top:4px;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
 textarea{font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
 small,.hint{color:var(--mut);font-size:13px}
 .tabs{display:flex;gap:18px;margin-bottom:12px}
@@ -40,6 +40,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="tabs">
 <label class="row"><input type="radio" name="src" value="midi" checked> MIDI dosyası</label>
 <label class="row"><input type="radio" name="src" value="text"> Nota metni</label>
+<label class="row"><input type="radio" name="src" value="code"> Shawzin kodu</label>
 </div>
 <div id="midiBox">
 <input type="file" id="file" accept=".mid,.midi">
@@ -48,7 +49,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </div>
 <div id="textBox" hidden>
 <textarea id="txt" rows="5" class="c" placeholder="E5:1 E5:1 F5:1 D5:1 D5:2 r:2 C5:2 B4:1 A4:1 ~:4"></textarea>
-<p class="hint">Her nota <b>isim+oktav:süre</b> biçiminde (E5, F#4, Mi5, Sol4). Süre 16'lık nota cinsinden, yazılmazsa 1. <b>r</b> sessizlik, <b>~</b> bağlı uzatma. 100% hızda çeyrek nota 1 saniyedir.</p>
+<p class="hint">Her nota <b>isim+oktav:süre</b> biçiminde (E5, F#4, Mi5, Sol4). Süre 16'lık nota cinsinden, yazılmazsa 1. <b>r</b> sessizlik, <b>~</b> bağlı uzatma. Tekrar için <b>|:</b> ve <b>:|</b>, kapılar için <b>[1</b> ve <b>[2</b> yaz. 100% hızda çeyrek nota 1 saniyedir.</p>
+</div>
+<div id="codeBox" hidden>
+<textarea id="codeIn" rows="4" class="c" placeholder="5hAAhADiAF..."></textarea>
+<p class="hint">Hazır bir kodu yapıştır, hızını ve boşluklarını değiştirip yeni kod al. %100 hız kodu aynen verir. Akor (çoklu nota) olan kısımlar atlanır.</p>
 </div>
 </section>
 
@@ -65,8 +70,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <input type="number" id="cap" class="c" value="1.5" min="0" step="0.25"></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
 <input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"></label>
+<label>Başlangıç vuruşu
+<input type="number" id="from" class="c" value="0" min="0" step="1"></label>
+<label>Bitiş vuruşu (0 = sona kadar)
+<input type="number" id="to" class="c" value="0" min="0" step="1"></label>
+<label>Oktav kaydırma (başlangıç-bitiş:oktav)
+<input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"></label>
 </div>
 <label class="row"><input type="checkbox" id="trim" class="c" checked> Baştaki sessizliği kırp</label>
+<label class="row"><input type="checkbox" id="snap" class="c"> Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)</label>
 <label class="row"><input type="checkbox" id="mono" class="c" checked> Aynı anda gelen notalardan en tizini al</label>
 <p class="hint">Hız yüzdesi küçüldükçe şarkı yavaşlar. 100 orijinal hızdır. Boşluk sınırı, iki nota arasındaki sessizliği kısaltır. En uzun nota sınırı, uzun bas notalarını eler.</p>
 </section>

@@ -21,6 +21,10 @@ const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts'];
+const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
+function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
+try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
@@ -85,16 +89,39 @@ function listChannels() {
   });
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
   $('chans').innerHTML = rows.map(r =>
-    `<label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
-     Kanal ${r.c + 1}${r.c === 9 ? ' (davul)' : ''}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label>`).join('');
+    `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
+     Kanal ${r.c + 1}${r.c === 9 ? ' (davul)' : ''}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
 }
 
 // ---------- Metin notası ----------
 let bad = [];
+function expand(tk) {
+  const o = []; let i = 0, start = 0, pass = 1;
+  while (i < tk.length) {
+    const k = tk[i++];
+    if (k === '|:') { start = i; pass = 1; continue; }
+    if (k === ':|') { if (pass === 1) { pass = 2; i = start; } else pass = 1; continue; }
+    if (k === '[1' && pass === 2) { while (i < tk.length && tk[i++] !== ':|'); pass = 1; continue; }
+    if (k === '[1' || k === '[2') continue;
+    o.push(k);
+  }
+  return o;
+}
+function parseCode(s) {
+  s = s.trim(); const si = +s[0] - 1; bad = [];
+  if (!(si >= 0 && si < 9)) return { notes: [] };
+  const [, iv, g] = SCALES[si], step = +$('mode').value, o = [];
+  for (let k = 1; k + 2 < s.length; k += 3) {
+    const ni = NOTE_CHARS.indexOf(s[k]), a = B64.indexOf(s[k + 1]), b = B64.indexOf(s[k + 2]);
+    if (ni < 0 || a < 0 || b < 0) { bad.push(s.substr(k, 3)); continue; }
+    o.push({ s: (a * 64 + b) * step, p: g + iv[ni] });
+  }
+  return { notes: o, force: { si, r: g } };
+}
 function parseText(s) {
   const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   let t = 0; const o = []; bad = [];
-  for (const k of s.split(/[\s|]+/).filter(Boolean)) {
+  for (const k of expand(s.split(/\s+/).filter(x => x && x !== '|'))) {
     const [x, d = '1'] = k.split(':');
     const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d)$/i.exec(x);
     if (m) o.push({ s: t, p: 12 * (+m[3] + 1) + B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) });
@@ -131,7 +158,16 @@ function best(ps, only) {
 }
 
 function getNotes() {
-  if (document.querySelector('input[name=src]:checked').value === 'text') return { notes: parseText($('txt').value), beat: 1 };
+  const r = getNotes0(), f = +$('from').value, t = +$('to').value;
+  const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
+  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b }; })
+    .filter(n => n.b >= f && (!t || n.b < t));
+  return r;
+}
+function getNotes0() {
+  const v = document.querySelector('input[name=src]:checked').value;
+  if (v === 'text') return { notes: parseText($('txt').value), beat: 1 };
+  if (v === 'code') { const r = parseCode($('codeIn').value); return { notes: r.notes, beat: 8 * +$('mode').value, force: r.force }; }
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
@@ -145,35 +181,39 @@ function getNotes() {
 }
 
 function run() {
-  const { notes, beat } = getNotes();
+  const { notes, beat, force } = getNotes();
   $('warn').textContent = bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') : '';
   if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; out = []; return; }
-  const b = best(notes.map(n => n.p), +$('scale').value);
+  const b = force ? { si: force.si, r: force.r } : best(notes.map(n => n.p), +$('scale').value);
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
   const st = { exact: 0, fold: 0, near: 0, push: 0 };
+  const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / step));
   let cur = 0, prev = null, lastPos = 0, res = [];
   for (const n of notes) {
     if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
     prev = n.s;
     const [i, k] = fit(n.p, set); st[['exact', 'fold', 'near'][k]]++;
-    let pos = Math.round(cur / speed / step) + 1;
+    let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
     lastPos = pos; res.push([pos, i]);
   }
-  const cut = res.length;
-  out = res.filter(x => x[0] <= 4096);
-  const code = String(b.si + 1) + out.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
-  $('code').value = code;
-  $('list').value = out.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
+  out = res;
+  const parts = []; let base = 0, cp = [];
+  for (const [p, i] of res) { if (p - base > 4096) { parts.push(cp); cp = []; base = p - 1; } cp.push([p - base, i]); }
+  parts.push(cp);
+  const enc = a => String(b.si + 1) + a.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
+  const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
+  $('code').value = parts.length > 1 ? parts.map((a, k) => `# Bölüm ${k + 1}\n${enc(a)}`).join('\n\n') : enc(parts[0]);
+  $('list').value = parts.map(lst).join('\n');
   last = { iv, gameRoot, step };
   const tr = gameRoot - b.r;
   $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
-    `Çeyrek nota yaklaşık ${(beat / speed / step).toFixed(1)} konum. ` +
+    `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.');
   const w = [];
-  if (cut > out.length) w.push(`${cut - out.length} nota 4096 konum sınırını aştığı için kesildi. Hızı artır ya da boşluk sınırını düşür.`);
+  if (parts.length > 1) w.push(`Şarkı 4096 konumdan uzun olduğu için ${parts.length} koda bölündü. Oyunda sırayla çal.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
 }
@@ -184,12 +224,21 @@ function play() {
   stop(); if (!out.length) return;
   ac = ac || new AudioContext();
   const t0 = ac.currentTime + 0.1;
-  out.forEach(([pos, i]) => {
-    const o = ac.createOscillator(), g = ac.createGain(), t = t0 + (pos - 1) * last.step;
-    o.type = 'triangle'; o.frequency.value = 440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 1); oscs.push(o);
-  });
+  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * last.step, 0.9));
+}
+function tone(f, t, len) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'triangle'; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + len + 0.05); oscs.push(o);
+}
+function preview(c) {
+  stop(); ac = ac || new AudioContext();
+  const a = midi.notes.filter(n => n.c === c), t0 = ac.currentTime + 0.1, s0 = sec(a[0].t);
+  for (const n of a) {
+    const s = sec(n.t) - s0; if (s > 12) break;
+    tone(440 * Math.pow(2, (n.p - 69) / 12), t0 + s, Math.min(sec(n.t + n.d) - sec(n.t), 1) + 0.1);
+  }
 }
 
 // ---------- Olaylar ----------
@@ -199,10 +248,11 @@ $('file').addEventListener('change', async e => {
   catch (err) { $('stats').textContent = err.message; }
 });
 document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
-  const t = document.querySelector('input[name=src]:checked').value === 'text';
-  $('midiBox').hidden = t; $('textBox').hidden = !t; run();
+  const v = document.querySelector('input[name=src]:checked').value;
+  $('midiBox').hidden = v !== 'midi'; $('textBox').hidden = v !== 'text'; $('codeBox').hidden = v !== 'code'; run();
 }));
-document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) run(); });
+document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
+$('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
 $('play').onclick = play;
 $('stop').onclick = stop;
