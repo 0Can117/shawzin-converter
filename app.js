@@ -21,7 +21,7 @@ const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -160,7 +160,7 @@ function best(ps, only) {
 function getNotes() {
   const r = getNotes0(), f = +$('from').value, t = +$('to').value;
   const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
-  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b }; })
+  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d }; })
     .filter(n => n.b >= f && (!t || n.b < t));
   return r;
 }
@@ -171,7 +171,7 @@ function getNotes0() {
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
-  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p }));
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
   if ($('mono').checked) {
     const r = [];
     for (const n of a) { const l = r[r.length - 1]; if (l && n.s - l.s < 0.02) { if (n.p > l.p) r[r.length - 1] = n; } else r.push(n); }
@@ -196,7 +196,22 @@ function run() {
     const [i, k] = fit(n.p, set); st[['exact', 'fold', 'near'][k]]++;
     let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
-    lastPos = pos; res.push([pos, i]);
+    lastPos = pos; res.push([pos, i, n.d || 0]);
+  }
+  const mg = Math.ceil(+$('clean').value / step - 1e-9), before = res.length;
+  if (mg >= 2) {
+    const kept = [];
+    for (const r of res) {
+      const l = kept[kept.length - 1];
+      if (l && r[0] - l[0] < mg) { if (r[2] > l[2]) kept[kept.length - 1] = r; } else kept.push(r);
+    }
+    res = kept; lastPos = res[res.length - 1][0];
+  }
+  st.thin = before - res.length;
+  const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
+  if (rep > 1) {
+    const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
+    for (let k = 1; k < rep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
   }
   out = res;
   const parts = []; let base = 0, cp = [];
@@ -214,6 +229,7 @@ function run() {
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.');
   const w = [];
   if (parts.length > 1) w.push(`Şarkı 4096 konumdan uzun olduğu için ${parts.length} koda bölündü. Oyunda sırayla çal.`);
+  if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
 }
