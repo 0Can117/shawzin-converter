@@ -26,6 +26,8 @@ const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
+if ($('cap').selectedIndex < 0) $('cap').value = '1.5';
+
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
   const v = new DataView(buf); let p = 0;

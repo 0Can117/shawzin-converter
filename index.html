@@ -48,7 +48,7 @@ label small{display:block;margin-top:2px}
 </div>
 <div id="midiBox">
 <input type="file" id="file" accept=".mid,.midi,.mxl,.musicxml,.xml">
-<p class="hint">MIDI ya da MusicXML (.mxl, .musicxml) yükle. Melodiyi taşıyan kanalı seç, birden fazla seçebilirsin. MusicXML'de tekrarlar ve 1./2. kapılar otomatik açılır. Nota görselin varsa <a href="https://github.com/Audiveris/audiveris">Audiveris</a> ile .mxl ya da .xml dosyasına çevirip buraya yükleyebilirsiniz (bu bağlantı dışındaki hiçbir bağlantıdan Audiveris kullanmayın ve yüklemeyin).</p>
+<p class="hint">MIDI ya da MusicXML (.mxl, .musicxml) yükle. Melodiyi taşıyan kanalı seç, birden fazla seçebilirsin. MusicXML'de tekrarlar ve 1./2. kapılar otomatik açılır. Nota görselin varsa <a href="https://github.com/Audiveris/audiveris">Audiveris</a> ile .mxl ya da .xml dosyasına çevirip buraya yükleyebilirsin.</p>
 <div id="chans"></div>
 </div>
 <div id="textBox" hidden>
@@ -76,8 +76,8 @@ label small{display:block;margin-top:2px}
 <input type="number" id="speed" class="c" value="60" min="10" max="300" step="1"><small>Küçüldükçe şarkı yavaşlar. .mid dosyaları için %55-75 uygun aralıktır.</small></label>
 <label>Oyun modu
 <select id="mode" class="c"><option value="0.125">Normal (yavaş)</option><option value="0.0625">Hızlı</option></select><small>Kodun çalınacağı oyun modu. Hızlı mod notaları yarı sürede çalar.</small></label>
-<label>En uzun boşluk (vuruş, 0 = kapalı)
-<input type="number" id="cap" class="c" value="1.5" min="0" step="0.25"><small>İki nota arasındaki sessizliği bu vuruşa kısaltır. 1-2 uygun aralıktır, 0 kapatır.</small></label>
+<label>Boşlukları azalt
+<select id="cap" class="c"><option value="0">Kapalı</option><option value="2">Hafif</option><option value="1.5" selected>Orta</option><option value="1">Güçlü</option></select><small>İki nota arasındaki sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruşa indirir. Çoğu şarkı için Orta uygundur.</small></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
 <input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları (uzun bas notaları) eler. 2-4 uygun aralıktır, 0 kapatır.</small></label>
 <label>Temiz ses
