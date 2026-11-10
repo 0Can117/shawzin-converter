@@ -29,7 +29,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 #chans label{padding:4px 0}
 #code{min-height:120px;word-break:break-all}
 footer{margin-top:8px;color:var(--mut);font-size:13px;text-align:center}
-footer a{color:var(--ac)}
+footer a,.hint a{color:var(--ac)}
 label small{display:block;margin-top:2px}
 </style>
 </head>
@@ -41,18 +41,25 @@ label small{display:block;margin-top:2px}
 <section>
 <h2>Kaynak</h2>
 <div class="tabs">
-<label class="row"><input type="radio" name="src" value="midi" checked> MIDI dosyası</label>
+<label class="row"><input type="radio" name="src" value="midi" checked> MIDI / MusicXML</label>
 <label class="row"><input type="radio" name="src" value="text"> Nota metni</label>
+<label class="row"><input type="radio" name="src" value="simple"> Basit nota</label>
 <label class="row"><input type="radio" name="src" value="code"> Shawzin kodu</label>
 </div>
 <div id="midiBox">
-<input type="file" id="file" accept=".mid,.midi">
-<p class="hint">Melodiyi taşıyan kanalı seç. Birden fazla kanal seçebilirsin.</p>
+<input type="file" id="file" accept=".mid,.midi,.mxl,.musicxml,.xml">
+<p class="hint">MIDI ya da MusicXML (.mxl, .musicxml) yükle. Melodiyi taşıyan kanalı seç, birden fazla seçebilirsin. MusicXML'de tekrarlar ve 1./2. kapılar otomatik açılır. Nota görselin varsa <a href="https://github.com/Audiveris/audiveris">Audiveris</a> ile .mxl ya da .xml dosyasına çevirip buraya yükleyebilirsin.</p>
 <div id="chans"></div>
 </div>
 <div id="textBox" hidden>
 <textarea id="txt" rows="5" class="c" placeholder="E5:1 E5:1 F5:1 D5:1 D5:2 r:2 C5:2 B4:1 A4:1 ~:4"></textarea>
 <p class="hint">Her nota <b>isim+oktav:süre</b> biçiminde (E5, F#4, Mi5, Sol4). Süre 16'lık nota cinsinden, yazılmazsa 1. <b>r</b> sessizlik, <b>~</b> bağlı uzatma. Tekrar için <b>|:</b> ve <b>:|</b>, kapılar için <b>[1</b> ve <b>[2</b> yaz. 100% hızda çeyrek nota 1 saniyedir.</p>
+</div>
+<div id="simpleBox" hidden>
+<textarea id="simpleIn" rows="5" class="c" placeholder="mi mi mi mi mi re mi_ | re re do si la"></textarea>
+<label>Başlangıç oktavı
+<input type="number" id="startOct" class="c" value="4" min="1" max="7" step="1"><small>İlk notanın oktavı. Sonraki notalar bir öncekine en yakın oktavda alınır. 4 iyi bir başlangıçtır.</small></label>
+<p class="hint">Notaları Do Re Mi Fa Sol La Si ya da C D E F G A B olarak yaz, oktav ve süre yazmana gerek yok. Notalar eşit uzunlukta sayılır, <b>_</b> notayı uzatır, <b>r</b> sessizliktir, <b>|</b> ölçü çizgisidir. Diyez için <b>fa#</b>, bemol için <b>sib</b> yaz. Oktavı kendin belirtmek istersen <b>re5</b> yaz.</p>
 </div>
 <div id="codeBox" hidden>
 <textarea id="codeIn" rows="4" class="c" placeholder="5hAAhADiAF..."></textarea>
@@ -104,8 +111,8 @@ label small{display:block;margin-top:2px}
 </section>
 <footer>
 <p>Kod biçimi için <a href="https://github.com/DANser-freelancer/Warframe-shawzin">Warframe-shawzin</a> projesi (DANser-freelancer) referans alındı. MIDI okuma, ölçek seçimi ve dönüştürme bu projede bağımsız olarak yazıldı.</p>
-<p>Bu araç resmî değildir ve Digital Extremes ile bağlantısı yoktur. Warframe, Shawzin ve ilgili tüm isimler ile oyun içeriği Digital Extremes Ltd.'ye aittir. Araç oyun içeriği barındırmaz ya da dağıtmaz.</p>
 <p>Shawzinler ve sitenin oluşmasındaki katkıları için --LumiNescenCe--'e teşekkürler.</p>
+<p>Bu araç resmî değildir ve Digital Extremes ile bağlantısı yoktur. Warframe, Shawzin ve ilgili tüm isimler ile oyun içeriği Digital Extremes Ltd.'ye aittir. Araç oyun içeriği barındırmaz ya da dağıtmaz.</p>
 </footer>
 </main>
 <script src="app.js"></script>

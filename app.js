@@ -21,7 +21,7 @@ const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -90,7 +90,118 @@ function listChannels() {
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
   $('chans').innerHTML = rows.map(r =>
     `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
-     Kanal ${r.c + 1}${r.c === 9 ? ' (davul)' : ''}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
+     ${midi.names ? midi.names[r.c] : 'Kanal ' + (r.c + 1) + (r.c === 9 ? ' (davul)' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
+}
+
+// ---------- MusicXML ----------
+function playOrder(ms) {
+  const o = []; let i = 0, start = 0, pass = 1;
+  while (i < ms.length && o.length < 5000) {
+    const m = ms[i];
+    if (m.fwd && !(i === start && pass > 1)) { start = i; pass = 1; }
+    if (m.ends && !m.ends.includes(pass)) { i++; continue; }
+    o.push(i);
+    const nx = ms[i + 1];
+    if (m.back && pass < m.times) { pass++; i = start; continue; }
+    if (m.back || (m.ends && !(nx && nx.ends))) pass = 1;
+    i++;
+  }
+  return o;
+}
+function parseXml(txt) {
+  const d = new DOMParser().parseFromString(txt, 'application/xml');
+  if (d.querySelector('parsererror')) throw new Error('MusicXML okunamadı.');
+  const STEP = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const tx = (el, t) => { const x = el.getElementsByTagName(t)[0]; return x ? x.textContent : null; };
+  const sd = d.querySelector('sound[tempo]'), pm = d.querySelector('metronome per-minute');
+  const bpm = (sd ? +sd.getAttribute('tempo') : pm ? +pm.textContent : 120) || 120;
+  const pn = {}; d.querySelectorAll('score-part').forEach(sp => (pn[sp.getAttribute('id')] = tx(sp, 'part-name') || 'Parça'));
+  const keys = {}, names = {};
+  const chOf = (pid, st) => { const k = pid + ':' + st; if (!(k in keys)) { keys[k] = Object.keys(keys).length; names[keys[k]] = (pn[pid] || 'Parça') + (st > 1 ? ' (' + st + '. porte)' : ''); } return keys[k]; };
+  const parts = [];
+  d.querySelectorAll('part').forEach(part => {
+    const pid = part.getAttribute('id'), ms = []; let div = 1, endsCur = null;
+    for (const m of part.children) {
+      if (m.tagName !== 'measure') continue;
+      const dv = tx(m, 'divisions'); if (dv) div = +dv;
+      const f = 960 / div, M = { fwd: false, back: false, ends: null, times: 2, notes: [], len: 0 };
+      for (const r of m.getElementsByTagName('repeat')) {
+        if (r.getAttribute('direction') === 'forward') M.fwd = true; else { M.back = true; M.times = +r.getAttribute('times') || 2; }
+      }
+      let stopEnd = false;
+      for (const e of m.getElementsByTagName('ending')) {
+        if (e.getAttribute('type') === 'start') endsCur = (e.getAttribute('number') || '').split(/[,\s]+/).map(Number).filter(Boolean);
+        else stopEnd = true;
+      }
+      M.ends = endsCur; if (stopEnd) endsCur = null;
+      let cur = 0, last = 0, mx = 0;
+      for (const n of m.children) {
+        const t = n.tagName, du = +tx(n, 'duration') || 0;
+        if (t === 'backup') cur -= du;
+        else if (t === 'forward') cur += du;
+        else if (t === 'note') {
+          if (n.getElementsByTagName('grace')[0]) continue;
+          const chord = n.getElementsByTagName('chord')[0];
+          const on = chord ? last : cur; if (!chord) { last = cur; cur += du; }
+          const pt = n.getElementsByTagName('pitch')[0];
+          const tieStop = [...n.getElementsByTagName('tie')].some(x => x.getAttribute('type') === 'stop');
+          if (pt && !tieStop) M.notes.push({ c: chOf(pid, +tx(n, 'staff') || 1), t: Math.round(on * f), d: Math.round(du * f),
+            p: 12 * (+tx(pt, 'octave') + 1) + STEP[tx(pt, 'step')] + (+tx(pt, 'alter') || 0) });
+        }
+        mx = Math.max(mx, cur);
+      }
+      M.len = Math.round(mx * f); ms.push(M);
+    }
+    parts.push(ms);
+  });
+  if (!parts.length) throw new Error('MusicXML içinde parça bulunamadı.');
+  const order = playOrder(parts[0]), notes = [];
+  parts.forEach(ms => {
+    let base = 0;
+    for (const i of order) { const M = ms[i]; if (M) M.notes.forEach(n => notes.push({ c: n.c, t: base + n.t, d: n.d, p: n.p })); base += parts[0][i].len; }
+  });
+  if (!notes.length) throw new Error('Dosyada nota bulunamadı.');
+  notes.sort((a, b) => a.t - b.t || a.p - b.p);
+  return { ppq: 960, notes, tempos: [[0, Math.round(6e7 / bpm)]], names };
+}
+async function unzipXml(buf) {
+  const v = new DataView(buf), u = new Uint8Array(buf);
+  let e = buf.byteLength - 22; while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('Geçersiz .mxl dosyası.');
+  let p = v.getUint32(e + 16, true); const n = v.getUint16(e + 10, true);
+  for (let i = 0; i < n; i++) {
+    const method = v.getUint16(p + 10, true), cs = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), el = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), off = v.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u.subarray(p + 46, p + 46 + nl));
+    p += 46 + nl + el + cl;
+    if (name.startsWith('META-INF') || !/\.(xml|musicxml)$/i.test(name)) continue;
+    const lo = off + 30 + v.getUint16(off + 26, true) + v.getUint16(off + 28, true), data = u.subarray(lo, lo + cs);
+    if (method === 0) return new TextDecoder().decode(data);
+    return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  }
+  throw new Error('.mxl içinde nota dosyası bulunamadı.');
+}
+async function readFile(f) {
+  const buf = await f.arrayBuffer(), n = f.name.toLowerCase();
+  if (n.endsWith('.mxl')) return parseXml(await unzipXml(buf));
+  if (n.endsWith('.xml') || n.endsWith('.musicxml')) return parseXml(new TextDecoder().decode(buf));
+  return parseMidi(buf);
+}
+
+// ---------- Basit nota ----------
+function simple2text(s, o0) {
+  const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+  const out = []; let prev = null;
+  for (const k of s.split(/\s+/).filter(x => x && x !== '|')) {
+    if (k === '_') { if (out.length) out[out.length - 1] = out[out.length - 1].replace(/:1$/, ':2'); continue; }
+    if (k.toLowerCase() === 'r') { out.push('r:1'); continue; }
+    const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d?)(_?)$/i.exec(k);
+    if (!m) { out.push('?' + k); continue; }
+    const base = B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+    const p = m[3] ? 12 * (+m[3] + 1) + base : prev === null ? 12 * (o0 + 1) + base : base + 12 * Math.round((prev - base) / 12);
+    prev = p;
+    out.push(NN[((p % 12) + 12) % 12] + (Math.floor(p / 12) - 1) + (m[4] ? ':2' : ':1'));
+  }
+  return out.join(' ');
 }
 
 // ---------- Metin notası ----------
@@ -167,6 +278,7 @@ function getNotes() {
 function getNotes0() {
   const v = document.querySelector('input[name=src]:checked').value;
   if (v === 'text') return { notes: parseText($('txt').value), beat: 1 };
+  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4)), beat: 1 };
   if (v === 'code') { const r = parseCode($('codeIn').value); return { notes: r.notes, beat: 8 * +$('mode').value, force: r.force }; }
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
@@ -260,12 +372,12 @@ function preview(c) {
 // ---------- Olaylar ----------
 $('file').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { midi = parseMidi(await f.arrayBuffer()); sec = makeSec(midi); listChannels(); run(); }
+  try { midi = await readFile(f); sec = makeSec(midi); listChannels(); run(); }
   catch (err) { $('stats').textContent = err.message; }
 });
 document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
   const v = document.querySelector('input[name=src]:checked').value;
-  $('midiBox').hidden = v !== 'midi'; $('textBox').hidden = v !== 'text'; $('codeBox').hidden = v !== 'code'; run();
+  $('midiBox').hidden = v !== 'midi'; $('textBox').hidden = v !== 'text'; $('simpleBox').hidden = v !== 'simple'; $('codeBox').hidden = v !== 'code'; run();
 }));
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
