@@ -384,6 +384,11 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
+const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false };
+$('reset').onclick = () => {
+  for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
+  save(); run();
+};
 $('play').onclick = play;
 $('stop').onclick = stop;
 run();
