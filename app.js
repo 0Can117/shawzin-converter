@@ -209,18 +209,17 @@ function run() {
   }
   st.thin = before - res.length;
   const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
+  let useRep = rep;
   if (rep > 1) {
     const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
-    for (let k = 1; k < rep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
+    useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
+    for (let k = 1; k < useRep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
   }
-  out = res;
-  const parts = []; let base = 0, cp = [];
-  for (const [p, i] of res) { if (p - base > 4096) { parts.push(cp); cp = []; base = p - 1; } cp.push([p - base, i]); }
-  parts.push(cp);
+  out = res.filter(x => x[0] <= 4096);
   const enc = a => String(b.si + 1) + a.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
   const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
-  $('code').value = parts.length > 1 ? parts.map((a, k) => `# Bölüm ${k + 1}\n${enc(a)}`).join('\n\n') : enc(parts[0]);
-  $('list').value = parts.map(lst).join('\n');
+  $('code').value = enc(out);
+  $('list').value = lst(out);
   last = { iv, gameRoot, step };
   const tr = gameRoot - b.r;
   $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
@@ -228,7 +227,8 @@ function run() {
     `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.');
   const w = [];
-  if (parts.length > 1) w.push(`Şarkı 4096 konumdan uzun olduğu için ${parts.length} koda bölündü. Oyunda sırayla çal.`);
+  if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
+  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');

@@ -70,19 +70,19 @@ label small{display:block;margin-top:2px}
 <label>Oyun modu
 <select id="mode" class="c"><option value="0.125">Normal (yavaş)</option><option value="0.0625">Hızlı</option></select><small>Kodun çalınacağı oyun modu. Hızlı mod notaları yarı sürede çalar.</small></label>
 <label>En uzun boşluk (vuruş, 0 = kapalı)
-<input type="number" id="cap" class="c" value="1.5" min="0" step="0.25"><small>İki nota arasındaki sessizliği bu vuruşa kısaltır. 0 kapatır.</small></label>
+<input type="number" id="cap" class="c" value="1.5" min="0" step="0.25"><small>İki nota arasındaki sessizliği bu vuruşa kısaltır. 1-2 uygun aralıktır, 0 kapatır.</small></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
-<input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları (uzun bas notaları) eler. 0 kapatır.</small></label>
+<input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları (uzun bas notaları) eler. 2-4 uygun aralıktır, 0 kapatır.</small></label>
 <label>Temiz ses
-<select id="clean" class="c"><option value="0">Kapalı</option><option value="0.2" selected>Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler, ses daha temiz olur.</small></label>
+<select id="clean" class="c"><option value="0">Kapalı</option><option value="0.2" selected>Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler. Hafif çoğu şarkıya yeter, Güçlü hızlı melodileri seyreltir.</small></label>
 <label>Şarkıyı uzat (kat)
-<input type="number" id="rep" class="c" value="1" min="1" max="10" step="1"><small>Şarkıyı yazdığın kat kadar art arda tekrarlar.</small></label>
+<input type="number" id="rep" class="c" value="1" min="1" max="10" step="1"><small>Şarkıyı yazdığın kat kadar art arda tekrarlar. Kısa şarkılar için 2-3 uygun aralıktır.</small></label>
 <label>Başlangıç vuruşu
-<input type="number" id="from" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruştan başlatır.</small></label>
+<input type="number" id="from" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruştan başlatır. Vuruş numarası yaz, örnek: 32.</small></label>
 <label>Bitiş vuruşu (0 = sona kadar)
-<input type="number" id="to" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruşta bitirir. 0 sonuna kadar alır.</small></label>
+<input type="number" id="to" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruşta bitirir. Örnek: 120, 0 sonuna kadar alır.</small></label>
 <label>Oktav kaydırma (başlangıç-bitiş:oktav)
-<input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Vuruş aralığındaki notaları oktav kaydırır. 23-57:-1 bir oktav aşağıdır.</small></label>
+<input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Vuruş aralığındaki notaları oktav kaydırır. -1 bir oktav aşağı, 1 bir oktav yukarıdır. Örnek: 23-57:-1.</small></label>
 </div>
 <label class="row"><input type="checkbox" id="trim" class="c" checked> <span>Baştaki sessizliği kırp<small>İlk nota hemen başlasın diye baştaki boşluğu siler.</small></span></label>
 <label class="row"><input type="checkbox" id="snap" class="c"> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar, ritim düzgünleşir.</small></span></label>
@@ -105,7 +105,6 @@ label small{display:block;margin-top:2px}
 <footer>
 <p>Kod biçimi için <a href="https://github.com/DANser-freelancer/Warframe-shawzin">Warframe-shawzin</a> projesi (DANser-freelancer) referans alındı. MIDI okuma, ölçek seçimi ve dönüştürme bu projede bağımsız olarak yazıldı.</p>
 <p>Bu araç resmî değildir ve Digital Extremes ile bağlantısı yoktur. Warframe, Shawzin ve ilgili tüm isimler ile oyun içeriği Digital Extremes Ltd.'ye aittir. Araç oyun içeriği barındırmaz ya da dağıtmaz.</p>
-<p>Shawzinler ve sitenin oluşmasındaki katkıları için --LumiNescenCe--'e teşekkürler.</p>
 </footer>
 </main>
 <script src="app.js"></script>
