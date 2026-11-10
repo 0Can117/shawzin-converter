@@ -257,8 +257,23 @@ function fit(p, set) {
   return [bi, 2];
 }
 
-function best(ps, only) {
-  const h = {}; ps.forEach(p => (h[p] = (h[p] || 0) + 1));
+function mapSeq(notes, set) {
+  let pq = null, pp = null;
+  return notes.map(n => {
+    let bi = -1, bc = 1e9;
+    set.forEach((q, j) => {
+      const e = ((q - n.p) % 12 + 12) % 12, pe = Math.min(e, 12 - e);
+      const c = pe * 16 + (pq === null ? Math.abs(q - n.p) * 0.1 : Math.abs((q - pq) - (n.p - pp)));
+      if (c < bc) { bc = c; bi = j; }
+    });
+    const q = set[bi], k = q === n.p ? 0 : (q - n.p) % 12 === 0 ? 1 : 2;
+    pq = q; pp = n.p;
+    return [bi, k];
+  });
+}
+
+function best(ns, only) {
+  const h = {}, per = {}; ns.forEach(n => (h[n.p] = (h[n.p] || 0) + 1 + 2 * Math.min(n.d || 0, 1)));
   const ks = Object.keys(h).map(Number), lo = Math.min(...ks), hi = Math.max(...ks);
   let b = { sc: -1 };
   SCALES.forEach(([, iv], si) => {
@@ -266,9 +281,11 @@ function best(ps, only) {
     for (let r = lo - 19; r <= hi; r++) {
       const set = iv.map(x => x + r); let sc = 0;
       for (const k of ks) { const f = fit(k, set)[1]; sc += h[k] * (f === 0 ? 1 : f === 1 ? 0.5 : 0); }
+      if (!(per[si] >= sc)) per[si] = sc;
       if (sc > b.sc) b = { si, r, sc };
     }
   });
+  b.per = per; b.tot = Object.values(h).reduce((x, y) => x + y, 0);
   return b;
 }
 
@@ -300,16 +317,17 @@ function run() {
   const { notes, beat, force } = getNotes();
   $('warn').textContent = bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') : '';
   if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; out = []; return; }
-  const b = force ? { si: force.si, r: force.r } : best(notes.map(n => n.p), +$('scale').value);
+  const b = force ? { si: force.si, r: force.r } : best(notes, +$('scale').value);
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
   const st = { exact: 0, fold: 0, near: 0, push: 0 };
   const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / step));
+  const mp = mapSeq(notes, set); let ix = 0;
   let cur = 0, prev = null, lastPos = 0, res = [];
   for (const n of notes) {
     if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
     prev = n.s;
-    const [i, k] = fit(n.p, set); st[['exact', 'fold', 'near'][k]]++;
+    const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
     let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
     lastPos = pos; res.push([pos, i, n.d || 0]);
@@ -341,7 +359,8 @@ function run() {
   $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
     `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
-    (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.');
+    (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
+    (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
