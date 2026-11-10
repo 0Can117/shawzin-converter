@@ -15,6 +15,7 @@ const SCALES = [
 ];
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const NOTE_CHARS = 'BCEJKMRSUhik'; // A..L harflerinin koddaki karşılığı
+const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici efekt', 'Etnik', 'Perküsyon', 'Ses efekti'];
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 
@@ -37,7 +38,7 @@ function parseMidi(buf) {
   const nt = v.getUint16(p); p += 2;
   const ppq = v.getUint16(p); p += 2;
   if (ppq & 0x8000) throw new Error('SMPTE zamanlı MIDI dosyaları desteklenmiyor.');
-  const notes = [], tempos = [];
+  const notes = [], tempos = [], progs = {};
   for (let t = 0; t < nt; t++) {
     if (str(4) !== 'MTrk') break;
     const len = v.getUint32(p); p += 4;
@@ -56,6 +57,7 @@ function parseMidi(buf) {
       else {
         const h = s >> 4, ch = s & 15, a = v.getUint8(p++);
         const b = (h === 12 || h === 13) ? 0 : v.getUint8(p++);
+        if (h === 12 && !(ch in progs)) progs[ch] = a;
         const k = ch * 128 + a;
         if (h === 9 && b > 0) (on[k] = on[k] || []).push(tick);
         else if (h === 8 || h === 9) {
@@ -69,7 +71,7 @@ function parseMidi(buf) {
   tempos.sort((x, y) => x[0] - y[0]);
   if (!tempos.length || tempos[0][0] > 0) tempos.unshift([0, 500000]);
   notes.sort((x, y) => x.t - y.t || x.p - y.p);
-  return { ppq, notes, tempos };
+  return { ppq, notes, tempos, progs };
 }
 
 function makeSec(m) {
@@ -92,7 +94,7 @@ function listChannels() {
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
   $('chans').innerHTML = rows.map(r =>
     `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
-     ${midi.names ? midi.names[r.c] : 'Kanal ' + (r.c + 1) + (r.c === 9 ? ' (davul)' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
+     ${midi.names ? midi.names[r.c] : 'Kanal ' + (r.c + 1) + (r.c === 9 ? ' (davul)' : midi.progs && r.c in midi.progs ? ' (' + FAM[midi.progs[r.c] >> 3] + ')' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
 }
 
 // ---------- MusicXML ----------
