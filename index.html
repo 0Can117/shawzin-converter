@@ -53,7 +53,7 @@ label small{display:block;margin-top:2px}
 </div>
 <div id="textBox" hidden>
 <textarea id="txt" rows="5" class="c" placeholder="E5:1 E5:1 F5:1 D5:1 D5:2 r:2 C5:2 B4:1 A4:1 ~:4"></textarea>
-<p class="hint">Her nota <b>isim+oktav:süre</b> biçiminde (E5, F#4, Mi5, Sol4). Süre 16'lık nota cinsinden, yazılmazsa 1. <b>r</b> sessizlik, <b>~</b> bağlı uzatma. Tekrar için <b>|:</b> ve <b>:|</b>, kapılar için <b>[1</b> ve <b>[2</b> yaz. %100 hızda çeyrek nota 1 saniyedir.</p>
+<p class="hint">Her nota <b>isim+oktav:süre</b> biçiminde (E5, F#4, Mi5, Sol4). Süre 16'lık nota cinsinden, yazılmazsa 1. <b>r</b> sessizlik, <b>~</b> bağlı uzatma. Tekrar için <b>|:</b> ve <b>:|</b>, kapılar için <b>[1</b> ve <b>[2</b> yaz. %100 hızda kod oyunun kendi temposunda çalınır.</p>
 </div>
 <div id="simpleBox" hidden>
 <textarea id="simpleIn" rows="5" class="c" placeholder="mi mi mi mi mi re mi_ | re re do si la"></textarea>
@@ -73,9 +73,9 @@ label small{display:block;margin-top:2px}
 <label>Ölçek
 <select id="scale" class="c"><option value="-1">Otomatik (en uygun)</option></select><small>Notaların oyundaki ölçeği. Otomatik, şarkıya en uygun ölçeği seçer.</small></label>
 <label>Hız (%)
-<input type="number" id="speed" class="c" value="100" min="10" max="300" step="1"><small>%100 tam hızdır (Normal modda 120 BPM). Küçüldükçe şarkı yavaşlar, büyüdükçe hızlanır.</small></label>
+<input type="number" id="speed" class="c" value="100" min="10" max="300" step="1"><small>%100 tam hızdır. Normal modda oyunun standart temposunu verir. Küçüldükçe şarkı yavaşlar, büyüdükçe hızlanır.</small></label>
 <label>Oyun modu
-<select id="mode" class="c"><option value="0.125">Normal</option><option value="0.0625">Hızlı</option></select><small>Kodun çalınacağı oyun modu. Normal 120 BPM, Hızlı 240 BPM hızında çalar.</small></label>
+<select id="mode" class="c"><option value="0.0625" selected>Normal</option><option value="0.125">Hızlı</option></select><small>Kodun çalınacağı oyun modu. Normal varsayılandır; Hızlı seçildiğinde aynı kod yaklaşık iki kat hızlı çalar.</small></label>
 <label>Boşlukları azalt
 <select id="cap" class="c"><option value="0">Kapalı</option><option value="2" selected>Hafif</option><option value="1.5">Orta</option><option value="1">Güçlü</option></select><small>İki nota arasındaki sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruşa indirir. Çoğu şarkı için Hafif uygundur.</small></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
