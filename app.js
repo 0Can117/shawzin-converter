@@ -1,9 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
 
-// Shawzin oyununun sabit tick süresi (saniye). Önizleme ve süre göstergesi bunu kullanır.
-const GAME_TICK = 0.0625;
-
 // Ölçekler: [ad, 12 notanın yarım ses aralıkları, oyundaki en alçak nota (MIDI)]
 const SCALES = [
   ['Pentatonic Minor', [0,3,5,7,10,12,15,17,19,22,24,27], 60],
@@ -30,7 +27,7 @@ const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
-if ($('cap').selectedIndex < 0) $('cap').value = '2';
+if ($('cap').selectedIndex < 0) $('cap').value = '1.5';
 
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
@@ -324,18 +321,14 @@ function run() {
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
   const st = { exact: 0, fold: 0, near: 0, push: 0 };
-  // ratio: bir kaynak 16'lık notasının oyun tick'i cinsinden karşılığı (kesirli bırakılır).
-  // Kesirli olması, Normal ve Hızlı mod arasındaki farkın yuvarlama ile kaybolmasını önler.
-  const snap = $('snap').checked, ratio = (beat / 4) / speed / step;
+  const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / step));
   const mp = mapSeq(notes, set); let ix = 0;
   let cur = 0, prev = null, lastPos = 0, res = [];
   for (const n of notes) {
     if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
     prev = n.s;
     const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
-    let pos = snap
-      ? Math.round(Math.round(cur / (beat / 4)) * ratio) + 1
-      : Math.round(cur / speed / step) + 1;
+    let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
     lastPos = pos; res.push([pos, i, n.d || 0]);
   }
@@ -361,11 +354,11 @@ function run() {
   const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
   $('code').value = enc(out);
   $('list').value = lst(out);
-  last = { iv, gameRoot };
+  last = { iv, gameRoot, step };
   const tr = gameRoot - b.r;
-  $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round((out[out.length - 1][0] - 1) * GAME_TICK)} sn, ölçek: ${name}. ` +
+  $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
-    `Çeyrek nota yaklaşık ${(beat / speed / step).toFixed(1)} konum. ` +
+    `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const w = [];
@@ -382,8 +375,7 @@ function play() {
   stop(); if (!out.length) return;
   ac = ac || new AudioContext();
   const t0 = ac.currentTime + 0.1;
-  // Önizleme, oyunun sabit tick süresini kullanır; böylece Dinle çıktısı oyun içi gerçek çalmayı yansıtır.
-  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * GAME_TICK, 0.9));
+  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * last.step, 0.9));
 }
 function tone(f, t, len) {
   const o = ac.createOscillator(), g = ac.createGain();
@@ -413,7 +405,7 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true };
+const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
