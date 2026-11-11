@@ -321,7 +321,9 @@ function run() {
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
   const st = { exact: 0, fold: 0, near: 0, push: 0 };
-  const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / step));
+  // NOT: u artık moddan bağımsız, sabit 0.0625 referansına göre hesaplanır.
+  // Böylece Normal (0.0625) ve Hızlı (0.125) mod arasındaki 2 kat fark snap açıkken de korunur.
+  const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / 0.0625));
   const mp = mapSeq(notes, set); let ix = 0;
   let cur = 0, prev = null, lastPos = 0, res = [];
   for (const n of notes) {
@@ -358,7 +360,7 @@ function run() {
   const tr = gameRoot - b.r;
   $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
-    `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
+    `Çeyrek nota yaklaşık ${(snap ? u * 4 * step : beat / speed / step).toFixed(1)} konum. ` +
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const w = [];
