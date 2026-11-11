@@ -77,11 +77,11 @@ label small{display:block;margin-top:2px}
 <label>Oyun modu
 <select id="mode" class="c"><option value="0.125">Normal (yavaş)</option><option value="0.0625">Hızlı</option></select><small>Kodun çalınacağı oyun modu. Hızlı mod notaları yarı sürede çalar.</small></label>
 <label>Boşlukları azalt
-<select id="cap" class="c"><option value="0">Kapalı</option><option value="2" selected>Hafif</option><option value="1.5" selected>Orta</option><option value="1">Güçlü</option></select><small>İki nota arasındaki sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruşa indirir. Çoğu şarkı için Orta uygundur.</small></label>
+<select id="cap" class="c"><option value="0">Kapalı</option><option value="2" selected>Hafif</option><option value="1.5">Orta</option><option value="1">Güçlü</option></select><small>İki nota arasındaki sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruşa indirir. Çoğu şarkı için Orta uygundur.</small></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
 <input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları (uzun bas notaları) eler. 2-4 uygun aralıktır, 0 kapatır.</small></label>
 <label>Temiz ses
-<select id="clean" class="c"><option value="0"selected>Kapalı</option><option value="0.2">Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler. Hafif çoğu şarkıya yeter, Güçlü hızlı melodileri seyreltir.</small></label>
+<select id="clean" class="c"><option value="0" selected>Kapalı</option><option value="0.2">Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler. Hafif çoğu şarkıya yeter, Güçlü hızlı melodileri seyreltir.</small></label>
 <label>Şarkıyı uzat (kat)
 <input type="number" id="rep" class="c" value="1" min="1" max="10" step="1"><small>Şarkıyı yazdığın kat kadar art arda tekrarlar. Kısa şarkılar için 2-3 uygun aralıktır.</small></label>
 <label>Başlangıç vuruşu
@@ -92,7 +92,7 @@ label small{display:block;margin-top:2px}
 <input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Vuruş aralığındaki notaları oktav kaydırır. -1 bir oktav aşağı, 1 bir oktav yukarıdır. Örnek: 23-57:-1.</small></label>
 </div>
 <label class="row"><input type="checkbox" id="trim" class="c" checked> <span>Baştaki sessizliği kırp<small>İlk nota hemen başlasın diye baştaki boşluğu siler.</small></span></label>
-<label class="row"><input type="checkbox" id="snap" class="c"> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar, ritim düzgünleşir.</small></span></label>
+<label class="row"><input type="checkbox" id="snap" class="c" checked> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar, ritim düzgünleşir.</small></span></label>
 <label class="row"><input type="checkbox" id="mono" class="c" checked> <span>Aynı anda gelen notalardan en tizini al<small>Aynı anda çalan notalardan yalnızca en tiz olanı bırakır.</small></span></label>
 <div class="btns"><button type="button" id="reset" class="alt">Varsayılan ayarlara dön</button></div>
 </section>
