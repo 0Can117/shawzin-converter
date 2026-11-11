@@ -25,7 +25,7 @@ let chScore = {}, chRows = [];
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct', 'harm', 'tidy'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct', 'harm', 'tidy', 'stype'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -231,9 +231,14 @@ function parseCode(s) {
   if (!(si >= 0 && si < 9)) return { notes: [] };
   const [, iv, g] = SCALES[si], step = +$('mode').value, o = [];
   for (let k = 1; k + 2 < s.length; k += 3) {
-    const ni = NOTE_CHARS.indexOf(s[k]), a = B64.indexOf(s[k + 1]), b = B64.indexOf(s[k + 2]);
+    let ni = NOTE_CHARS.indexOf(s[k]), ch, cidx;
+    const a = B64.indexOf(s[k + 1]), b = B64.indexOf(s[k + 2]);
+    if (ni < 0) {
+      const key = Object.keys(MULTI).find(x => MULTI[x] === s[k]);
+      if (key) { ch = s[k]; cidx = [...key].map(x => x.charCodeAt(0) - 97); ni = Math.max(...cidx); }
+    }
     if (ni < 0 || a < 0 || b < 0) { bad.push(s.substr(k, 3)); continue; }
-    o.push({ s: (a * 64 + b) * step, p: g + iv[ni] });
+    o.push({ s: (a * 64 + b) * step, p: g + iv[ni], ch, cidx });
   }
   return { notes: o, force: { si, r: g } };
 }
@@ -296,9 +301,9 @@ function best(ns, only) {
 function getNotes() {
   const r = getNotes0(), f = +$('from').value, t = +$('to').value;
   const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
-  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d }; })
+  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d, ch: n.ch, cidx: n.cidx }; })
     .filter(n => n.b >= f && (!t || n.b < t));
-  if ($('tidy').checked) {
+  if ($('tidy').checked && !r.force) {
     const P = r.notes.map(n => n.p);
     r.notes = r.notes.map((n, i) => {
       const w = P.slice(Math.max(0, i - 4), i + 5).sort((x, y) => x - y), m = w[w.length >> 1]; let p = n.p;
@@ -352,7 +357,7 @@ function run() {
     const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
     let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
-    lastPos = pos; res.push([pos, i, n.d || 0]);
+    lastPos = pos; res.push([pos, i, n.d || 0, n.ch, n.cidx]);
   }
   const mg = Math.ceil(+$('clean').value / step - 1e-9), before = res.length;
   if (mg >= 2) {
@@ -366,15 +371,17 @@ function run() {
   st.thin = before - res.length;
   const hs = +$('harm').value; let hwarn = '';
   if (hs > 0) {
-    if (![0, 1, 4, 5, 8].includes(b.si)) hwarn = 'Bu ölçekte akorlar farklı olduğu için armoni uygulanmadı.';
+    if (['tia', 'cor'].includes($('stype').value)) hwarn = 'Bu Shawzin türünde akorlar farklı olduğu için armoni uygulanmadı.';
+    else if (![0, 1, 4, 5, 8].includes(b.si)) hwarn = 'Bu ölçekte akorlar farklı olduğu için armoni uygulanmadı.';
     else {
       const hp = Math.ceil(hs / step - 1e-9);
       res.forEach((r, k) => {
-        if ((res[k + 1] ? res[k + 1][0] : r[0] + 99) - r[0] < hp) return;
+        if (r[3] || (res[k + 1] ? res[k + 1][0] : r[0] + 99) - r[0] < hp) return;
         const c = CHORDS.find((x, j) => (j < 6 || hs <= 0.01) && x[1][2] === r[1]);
         if (c) { r[3] = c[0]; r[4] = c[1]; }
       });
       st.harm = res.filter(r => r[3]).length;
+      if (st.harm && $('stype').value === 'ari') hwarn = 'Bu türde birkaç akor farklı çalabilir.';
     }
   }
   const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
@@ -384,7 +391,7 @@ function run() {
     useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
     for (let k = 1; k < useRep; k++) for (const r of one) res.push([r[0] + k * span, r[1], r[2], r[3], r[4]]);
   }
-  out = res.filter(x => x[0] <= 4096);
+  out = res.filter(x => x[0] <= 4096).slice(0, 1666);
   const enc = a => String(b.si + 1) + a.map(r => (r[3] || NOTE_CHARS[r[1]]) + B64[(r[0] - 1) >> 6] + B64[(r[0] - 1) & 63]).join('');
   const lst = a => a.map(r => r[0] + (r[3] ? Object.keys(MULTI).find(k => MULTI[k] === r[3]).toUpperCase().split('').join('+') : String.fromCharCode(65 + r[1]))).join(',');
   $('code').value = enc(out);
@@ -398,7 +405,8 @@ function run() {
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
-  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
+  if (res.length > out.length) w.push(`Oyun en fazla 1666 nota ve 4096 konumu içe aktarıyor, son ${res.length - out.length} nota kesildi. Hızı yükselt, boşlukları azalt ya da Temiz sesi artır.`);
+  else if (out.length > 1000) w.push('Bu şarkı 1000 notadan uzun. Oyunda yalnızca içe aktararak çalınır, sohbette paylaşılamaz.');
   if (hwarn) w.push(hwarn);
   if (st.harm) w.push(`${st.harm} nota akorla çalınacak. Melodi notası akorun en üst notası olarak kalır.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
@@ -456,7 +464,7 @@ function autoCh() {
   run();
 }
 $('auto').onclick = () => midi && autoCh();
-const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, harm: '0.5', tidy: true };
+const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, harm: '0.5', tidy: true, stype: 'std' };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
