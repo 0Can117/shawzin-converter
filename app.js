@@ -15,6 +15,7 @@ const SCALES = [
 ];
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const NOTE_CHARS = 'BCEJKMRSUhik';
+const CHORDS = [['Z', [0, 2, 4]], ['a', [1, 3, 5]], ['c', [2, 4, 6]], ['x', [3, 5, 7]], ['y', [4, 6, 8]], ['0', [5, 7, 9]], ['p', [0, 1, 3]], ['q', [1, 2, 4]], ['s', [2, 3, 5]], ['5', [3, 4, 6]], ['6', [4, 5, 7]], ['8', [5, 6, 8]]];
 const MULTI = { defghijkl: '/', deghjk: '7', efhikl: '+', dfgijl: '9', dgj: '5', ehk: '6', fil: '8', ghijkl: '3', hikl: '2', ghjk: 'z', gijl: '1', il: '0', hk: 'y', gj: 'x', defjkl: 'v', dejk: 'r', dfjl: 't', efkl: 'u', dj: 'p', ek: 'q', fl: 's', defghi: 'f', efhi: 'e', dfgi: 'd', degh: 'b', dg: 'Z', eh: 'a', fi: 'c', jkl: 'n', jk: 'j', kl: 'm', jl: 'l', ghi: 'X', hi: 'W', gh: 'T', gi: 'V', def: 'P', ef: 'O', de: 'L', df: 'N', abc: 'H', ab: 'D', bc: 'G', ac: 'F' }; // A..L harflerinin koddaki karşılığı
 const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici efekt', 'Etnik', 'Perküsyon', 'Ses efekti'];
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -363,29 +364,29 @@ function run() {
     res = kept; lastPos = res[res.length - 1][0];
   }
   st.thin = before - res.length;
-  const hs = +$('harm').value;
+  const hs = +$('harm').value; let hwarn = '';
   if (hs > 0) {
-    const hp = Math.ceil(hs / step - 1e-9);
-    res.forEach((r, k) => {
-      if ((res[k + 1] ? res[k + 1][0] : r[0] + 99) - r[0] < hp) return;
-      for (const dl of [-2, -3, 2, 3]) {
-        const q = r[1] + dl;
-        if (q >= 0 && q < 12 && MULTI[[r[1], q].sort((x, y) => x - y).map(x => String.fromCharCode(97 + x)).join('')]) { r[3] = q; break; }
-      }
-    });
-    st.harm = res.filter(r => r[3] != null).length;
+    if (![0, 1, 4, 5, 8].includes(b.si)) hwarn = 'Bu ölçekte akorlar farklı olduğu için armoni uygulanmadı.';
+    else {
+      const hp = Math.ceil(hs / step - 1e-9);
+      res.forEach((r, k) => {
+        if ((res[k + 1] ? res[k + 1][0] : r[0] + 99) - r[0] < hp) return;
+        const c = CHORDS.find((x, j) => (j < 6 || hs <= 0.01) && x[1][2] === r[1]);
+        if (c) { r[3] = c[0]; r[4] = c[1]; }
+      });
+      st.harm = res.filter(r => r[3]).length;
+    }
   }
   const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
   let useRep = rep;
   if (rep > 1) {
     const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
     useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
-    for (let k = 1; k < useRep; k++) for (const r of one) res.push([r[0] + k * span, r[1], r[2], r[3]]);
+    for (let k = 1; k < useRep; k++) for (const r of one) res.push([r[0] + k * span, r[1], r[2], r[3], r[4]]);
   }
   out = res.filter(x => x[0] <= 4096);
-  const L = r => (r[3] != null ? [r[1], r[3]].sort((x, y) => x - y) : [r[1]]).map(x => String.fromCharCode(97 + x));
-  const enc = a => String(b.si + 1) + a.map(r => (r[3] != null ? MULTI[L(r).join('')] : NOTE_CHARS[r[1]]) + B64[(r[0] - 1) >> 6] + B64[(r[0] - 1) & 63]).join('');
-  const lst = a => a.map(r => r[0] + L(r).join('+').toUpperCase()).join(',');
+  const enc = a => String(b.si + 1) + a.map(r => (r[3] || NOTE_CHARS[r[1]]) + B64[(r[0] - 1) >> 6] + B64[(r[0] - 1) & 63]).join('');
+  const lst = a => a.map(r => r[0] + (r[3] ? Object.keys(MULTI).find(k => MULTI[k] === r[3]).toUpperCase().split('').join('+') : String.fromCharCode(65 + r[1]))).join(',');
   $('code').value = enc(out);
   $('list').value = lst(out);
   last = { iv, gameRoot, step };
@@ -398,7 +399,8 @@ function run() {
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
-  if (st.harm) w.push(`${st.harm} notaya uyumlu ikinci nota (armoni) eklendi.`);
+  if (hwarn) w.push(hwarn);
+  if (st.harm) w.push(`${st.harm} nota akorla çalınacak. Melodi notası akorun en üst notası olarak kalır.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
@@ -410,7 +412,7 @@ function play() {
   stop(); if (!out.length) return;
   ac = ac || new AudioContext();
   const t0 = ac.currentTime + 0.1;
-  out.forEach(r => [r[1], r[3]].forEach(x => x != null && tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (r[0] - 1) * last.step, 0.9)));
+  out.forEach(r => (r[4] || [r[1]]).forEach(x => tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (r[0] - 1) * last.step, 0.9)));
 }
 function tone(f, t, len) {
   const o = ac.createOscillator(), g = ac.createGain();
