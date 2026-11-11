@@ -281,4 +281,143 @@ function best(ns, only) {
   let b = { sc: -1 };
   SCALES.forEach(([, iv], si) => {
     if (only >= 0 && only !== si) return;
-    for (let r =
+    for (let r = lo - 19; r <= hi; r++) {
+      const set = iv.map(x => x + r); let sc = 0;
+      for (const k of ks) { const f = fit(k, set)[1]; sc += h[k] * (f === 0 ? 1 : f === 1 ? 0.5 : 0); }
+      if (!(per[si] >= sc)) per[si] = sc;
+      if (sc > b.sc) b = { si, r, sc };
+    }
+  });
+  b.per = per; b.tot = Object.values(h).reduce((x, y) => x + y, 0);
+  return b;
+}
+
+function getNotes() {
+  const r = getNotes0(), f = +$('from').value, t = +$('to').value;
+  const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
+  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d }; })
+    .filter(n => n.b >= f && (!t || n.b < t));
+  return r;
+}
+function getNotes0() {
+  const v = document.querySelector('input[name=src]:checked').value;
+  if (v === 'text') return { notes: parseText($('txt').value), beat: 1 };
+  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4)), beat: 1 };
+  if (v === 'code') { const r = parseCode($('codeIn').value); return { notes: r.notes, beat: 8 * +$('mode').value, force: r.force }; }
+  if (!midi) return { notes: [], beat: 1 };
+  const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
+  const md = +$('maxdur').value * midi.ppq;
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
+  if ($('mono').checked) {
+    const r = [];
+    for (const n of a) { const l = r[r.length - 1]; if (l && n.s - l.s < 0.02) { if (n.p > l.p) r[r.length - 1] = n; } else r.push(n); }
+    a = r;
+  }
+  return { notes: a, beat: midi.tempos[0][1] / 1e6 };
+}
+
+function run() {
+  const { notes, beat, force } = getNotes();
+  $('warn').textContent = bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') : '';
+  if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; out = []; return; }
+  const b = force ? { si: force.si, r: force.r } : best(notes, +$('scale').value);
+  const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
+  const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
+  const st = { exact: 0, fold: 0, near: 0, push: 0 };
+  // ratio: bir kaynak 16'lık notasının oyun tick'i cinsinden karşılığı (kesirli bırakılır).
+  // Kesirli olması, Normal ve Hızlı mod arasındaki farkın yuvarlama ile kaybolmasını önler.
+  const snap = $('snap').checked, ratio = (beat / 4) / speed / step;
+  const mp = mapSeq(notes, set); let ix = 0;
+  let cur = 0, prev = null, lastPos = 0, res = [];
+  for (const n of notes) {
+    if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
+    prev = n.s;
+    const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
+    let pos = snap
+      ? Math.round(Math.round(cur / (beat / 4)) * ratio) + 1
+      : Math.round(cur / speed / step) + 1;
+    if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
+    lastPos = pos; res.push([pos, i, n.d || 0]);
+  }
+  const mg = Math.ceil(+$('clean').value / step - 1e-9), before = res.length;
+  if (mg >= 2) {
+    const kept = [];
+    for (const r of res) {
+      const l = kept[kept.length - 1];
+      if (l && r[0] - l[0] < mg) { if (r[2] > l[2]) kept[kept.length - 1] = r; } else kept.push(r);
+    }
+    res = kept; lastPos = res[res.length - 1][0];
+  }
+  st.thin = before - res.length;
+  const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
+  let useRep = rep;
+  if (rep > 1) {
+    const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
+    useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
+    for (let k = 1; k < useRep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
+  }
+  out = res.filter(x => x[0] <= 4096);
+  const enc = a => String(b.si + 1) + a.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
+  const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
+  $('code').value = enc(out);
+  $('list').value = lst(out);
+  last = { iv, gameRoot };
+  const tr = gameRoot - b.r;
+  $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round((out[out.length - 1][0] - 1) * GAME_TICK)} sn, ölçek: ${name}. ` +
+    `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
+    `Çeyrek nota yaklaşık ${(beat / speed / step).toFixed(1)} konum. ` +
+    (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
+    (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
+  const w = [];
+  if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
+  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
+  if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
+  if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
+  $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
+}
+
+// ---------- Dinleme ----------
+function stop() { oscs.forEach(o => { try { o.stop(); } catch (e) {} }); oscs = []; }
+function play() {
+  stop(); if (!out.length) return;
+  ac = ac || new AudioContext();
+  const t0 = ac.currentTime + 0.1;
+  // Önizleme, oyunun sabit tick süresini kullanır; böylece Dinle çıktısı oyun içi gerçek çalmayı yansıtır.
+  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * GAME_TICK, 0.9));
+}
+function tone(f, t, len) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'triangle'; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + len + 0.05); oscs.push(o);
+}
+function preview(c) {
+  stop(); ac = ac || new AudioContext();
+  const a = midi.notes.filter(n => n.c === c), t0 = ac.currentTime + 0.1, s0 = sec(a[0].t);
+  for (const n of a) {
+    const s = sec(n.t) - s0; if (s > 12) break;
+    tone(440 * Math.pow(2, (n.p - 69) / 12), t0 + s, Math.min(sec(n.t + n.d) - sec(n.t), 1) + 0.1);
+  }
+}
+
+// ---------- Olaylar ----------
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { midi = await readFile(f); sec = makeSec(midi); listChannels(); run(); }
+  catch (err) { $('stats').textContent = err.message; }
+});
+document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
+  const v = document.querySelector('input[name=src]:checked').value;
+  $('midiBox').hidden = v !== 'midi'; $('textBox').hidden = v !== 'text'; $('simpleBox').hidden = v !== 'simple'; $('codeBox').hidden = v !== 'code'; run();
+}));
+document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
+$('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
+$('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true };
+$('reset').onclick = () => {
+  for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
+  save(); run();
+};
+$('play').onclick = play;
+$('stop').onclick = stop;
+run();
