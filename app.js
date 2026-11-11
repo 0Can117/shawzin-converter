@@ -14,15 +14,17 @@ const SCALES = [
   ['Yo', [0,2,5,7,9,12,14,17,19,21,24,26], 61]
 ];
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const NOTE_CHARS = 'BCEJKMRSUhik'; // A..L harflerinin koddaki karşılığı
+const NOTE_CHARS = 'BCEJKMRSUhik';
+const MULTI = { defghijkl: '/', deghjk: '7', efhikl: '+', dfgijl: '9', dgj: '5', ehk: '6', fil: '8', ghijkl: '3', hikl: '2', ghjk: 'z', gijl: '1', il: '0', hk: 'y', gj: 'x', defjkl: 'v', dejk: 'r', dfjl: 't', efkl: 'u', dj: 'p', ek: 'q', fl: 's', defghi: 'f', efhi: 'e', dfgi: 'd', degh: 'b', dg: 'Z', eh: 'a', fi: 'c', jkl: 'n', jk: 'j', kl: 'm', jl: 'l', ghi: 'X', hi: 'W', gh: 'T', gi: 'V', def: 'P', ef: 'O', de: 'L', df: 'N', abc: 'H', ab: 'D', bc: 'G', ac: 'F' }; // A..L harflerinin koddaki karşılığı
 const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici efekt', 'Etnik', 'Perküsyon', 'Ses efekti'];
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 
+let chScore = {}, chRows = [];
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct', 'harm', 'tidy'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -92,6 +94,7 @@ function listChannels() {
     return { c: +c, n: a.length, lo: ps[0], hi: ps[ps.length - 1], poly, score };
   });
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
+  rows.forEach(r => (chScore[r.c] = r.score)); chRows = rows;
   $('chans').innerHTML = rows.map(r =>
     `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
      ${midi.names ? midi.names[r.c] : 'Kanal ' + (r.c + 1) + (r.c === 9 ? ' (davul)' : midi.progs && r.c in midi.progs ? ' (' + FAM[midi.progs[r.c] >> 3] + ')' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
@@ -294,6 +297,15 @@ function getNotes() {
   const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
   r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d }; })
     .filter(n => n.b >= f && (!t || n.b < t));
+  if ($('tidy').checked) {
+    const P = r.notes.map(n => n.p);
+    r.notes = r.notes.map((n, i) => {
+      const w = P.slice(Math.max(0, i - 4), i + 5).sort((x, y) => x - y), m = w[w.length >> 1]; let p = n.p;
+      while (p - m > 12) p -= 12;
+      while (m - p > 12) p += 12;
+      return { ...n, p };
+    });
+  }
   return r;
 }
 function getNotes0() {
@@ -304,7 +316,16 @@ function getNotes0() {
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
-  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p, c: n.c, d: sec(n.t + n.d) - sec(n.t) }));
+  if (on.length > 1) {
+    const pri = on.reduce((x, y) => (chScore[y] > chScore[x] ? y : x)), P = a.filter(n => n.c === pri);
+    let j = 0;
+    a = a.filter(n => {
+      if (n.c === pri) return true;
+      while (j < P.length && P[j].s + P[j].d < n.s - 0.03) j++;
+      return !(j < P.length && P[j].s <= n.s + 0.03);
+    });
+  }
   if ($('mono').checked) {
     const r = [];
     for (const n of a) { const l = r[r.length - 1]; if (l && n.s - l.s < 0.02) { if (n.p > l.p) r[r.length - 1] = n; } else r.push(n); }
@@ -342,16 +363,29 @@ function run() {
     res = kept; lastPos = res[res.length - 1][0];
   }
   st.thin = before - res.length;
+  const hs = +$('harm').value;
+  if (hs > 0) {
+    const hp = Math.ceil(hs / step - 1e-9);
+    res.forEach((r, k) => {
+      if ((res[k + 1] ? res[k + 1][0] : r[0] + 99) - r[0] < hp) return;
+      for (const dl of [-2, -3, 2, 3]) {
+        const q = r[1] + dl;
+        if (q >= 0 && q < 12 && MULTI[[r[1], q].sort((x, y) => x - y).map(x => String.fromCharCode(97 + x)).join('')]) { r[3] = q; break; }
+      }
+    });
+    st.harm = res.filter(r => r[3] != null).length;
+  }
   const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
   let useRep = rep;
   if (rep > 1) {
     const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
     useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
-    for (let k = 1; k < useRep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
+    for (let k = 1; k < useRep; k++) for (const r of one) res.push([r[0] + k * span, r[1], r[2], r[3]]);
   }
   out = res.filter(x => x[0] <= 4096);
-  const enc = a => String(b.si + 1) + a.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
-  const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
+  const L = r => (r[3] != null ? [r[1], r[3]].sort((x, y) => x - y) : [r[1]]).map(x => String.fromCharCode(97 + x));
+  const enc = a => String(b.si + 1) + a.map(r => (r[3] != null ? MULTI[L(r).join('')] : NOTE_CHARS[r[1]]) + B64[(r[0] - 1) >> 6] + B64[(r[0] - 1) & 63]).join('');
+  const lst = a => a.map(r => r[0] + L(r).join('+').toUpperCase()).join(',');
   $('code').value = enc(out);
   $('list').value = lst(out);
   last = { iv, gameRoot, step };
@@ -364,6 +398,7 @@ function run() {
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
+  if (st.harm) w.push(`${st.harm} notaya uyumlu ikinci nota (armoni) eklendi.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
@@ -375,7 +410,7 @@ function play() {
   stop(); if (!out.length) return;
   ac = ac || new AudioContext();
   const t0 = ac.currentTime + 0.1;
-  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * last.step, 0.9));
+  out.forEach(r => [r[1], r[3]].forEach(x => x != null && tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (r[0] - 1) * last.step, 0.9)));
 }
 function tone(f, t, len) {
   const o = ac.createOscillator(), g = ac.createGain();
@@ -405,7 +440,21 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false };
+function autoCh() {
+  const bk = n => Math.floor(sec(n.t) * 4), by = {};
+  midi.notes.forEach(n => (by[n.c] = by[n.c] || []).push(n));
+  const cand = chRows.filter(r => r.c !== 9 && r.poly < 0.35 && r.n >= 20).sort((x, y) => y.score - x.score);
+  if (!cand.length) return;
+  const cov = new Set(), pick = [];
+  for (const r of cand) {
+    const bs = by[r.c].map(bk), fresh = bs.filter(b => !cov.has(b)).length / bs.length;
+    if (!pick.length || (fresh > 0.5 && pick.length < 3)) { pick.push(r.c); bs.forEach(b => cov.add(b)); }
+  }
+  document.querySelectorAll('#chans input').forEach(i => (i.checked = pick.includes(+i.value)));
+  run();
+}
+$('auto').onclick = () => midi && autoCh();
+const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, harm: '0.5', tidy: true };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
