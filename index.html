@@ -31,12 +31,30 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 footer{margin-top:8px;color:var(--mut);font-size:13px;text-align:center}
 footer a,.hint a{color:var(--ac)}
 label small{display:block;margin-top:2px}
+main{position:relative}
+.side{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:14px}
+.side h2{font-size:16px;margin:0 0 8px}
+.side ol{margin:0;padding-left:20px}
+.side li{margin:4px 0}
+.side p{margin:8px 0 0;color:var(--mut);font-size:13px}
+.side a{color:var(--ac)}
+@media(min-width:1300px){.side{position:absolute;top:96px;left:calc(100% + 8px);width:250px;margin:0}}
 </style>
 </head>
 <body>
 <main>
 <h1>Shawzin Kod Dönüştürücü</h1>
 <p class="sub">MIDI dosyasını ya da yazdığın notaları Warframe Shawzin koduna çevirir. Hız ve boşlukları ayarlayıp sonucu dinleyebilirsin.</p>
+
+<aside class="side">
+<h2>MP3'ten Shawzin kodu</h2>
+<ol>
+<li><a href="https://basicpitch.spotify.com" target="_blank" rel="noopener">Basic Pitch</a> sayfasına MP3 ya da WAV yükle.</li>
+<li>Çıkan .mid dosyasını indir.</li>
+<li>Kaynak bölümünde MIDI'yi seçip bu dosyayı yükle, melodi kanalını işaretle.</li>
+</ol>
+<p>Tek enstrümanlı kayıtlarda iyi çalışır. Karışık şarkılarda fazla nota çıkar, Temiz ses ve Izgara ayarları yardımcı olur.</p>
+</aside>
 
 <section>
 <h2>Kaynak</h2>
@@ -48,7 +66,7 @@ label small{display:block;margin-top:2px}
 </div>
 <div id="midiBox">
 <input type="file" id="file" accept=".mid,.midi,.mxl,.musicxml,.xml">
-<p class="hint">MIDI ya da MusicXML (.mxl, .musicxml) yükle. Melodiyi taşıyan kanalı seç, birden fazla seçebilirsin. MusicXML'de tekrarlar ve 1./2. kapılar otomatik açılır. Nota görselin varsa <a href="https://github.com/Audiveris/audiveris">Audiveris</a> ile .mxl ya da .xml dosyasına çevirip buraya yükleyebilirsin (burada verilen bağlantı dışında hiçbir yerden Audiveris yüklemeyin ve kullanmayın).</p>
+<p class="hint">MIDI ya da MusicXML (.mxl, .musicxml) yükle, melodi kanalını seç. MusicXML'de tekrarlar otomatik açılır. Nota görselini <a href="https://github.com/Audiveris/audiveris">Audiveris</a> ile .mxl'e çevirebilirsin (yalnızca buradaki bağlantıdan indir).</p>
 <div id="chans"></div>
 </div>
 <div id="textBox" hidden>
@@ -58,7 +76,7 @@ label small{display:block;margin-top:2px}
 <div id="simpleBox" hidden>
 <textarea id="simpleIn" rows="5" class="c" placeholder="mi mi mi mi mi re mi_ | re re do si la"></textarea>
 <label>Başlangıç oktavı
-<input type="number" id="startOct" class="c" value="4" min="1" max="7" step="1"><small>İlk notanın oktavı. Sonraki notalar bir öncekine en yakın oktavda alınır. 4 iyi bir başlangıçtır.</small></label>
+<input type="number" id="startOct" class="c" value="4" min="1" max="7" step="1"><small>İlk notanın oktavı. 4 iyi bir başlangıçtır.</small></label>
 <p class="hint">Notaları Do Re Mi Fa Sol La Si ya da C D E F G A B olarak yaz, oktav ve süre yazmana gerek yok. Notalar eşit uzunlukta sayılır, <b>_</b> notayı uzatır, <b>r</b> sessizliktir, <b>|</b> ölçü çizgisidir. Diyez için <b>fa#</b>, bemol için <b>sib</b> yaz. Oktavı kendin belirtmek istersen <b>re5</b> yaz.</p>
 </div>
 <div id="codeBox" hidden>
@@ -71,33 +89,33 @@ label small{display:block;margin-top:2px}
 <h2>Ayarlar</h2>
 <div class="grid">
 <label>Ölçek
-<select id="scale" class="c"><option value="-1">Otomatik (en uygun)</option></select><small>Notaların oyundaki ölçeği. Otomatik, şarkıya en uygun ölçeği seçer.</small></label>
+<select id="scale" class="c"><option value="-1">Otomatik (en uygun)</option></select><small>Oyundaki ölçek. Otomatik en uygununu seçer.</small></label>
 <label>Hız (%)
-<input type="number" id="speed" class="c" value="100" min="10" max="300" step="1"><small>%100 şarkının orijinal temposudur. Küçüldükçe şarkı yavaşlar, büyüdükçe hızlanır.</small></label>
+<input type="number" id="speed" class="c" value="100" min="10" max="300" step="1"><small>%100 orijinal tempo. Küçüldükçe yavaşlar.</small></label>
 <label>Oyun modu
-<select id="mode" class="c"><option value="0.0625" selected>Normal (oyun varsayılanı)</option><option value="0.125">Yavaş mod (oyunda yavaş oynatma açık)</option></select><small>Oyundaki çalma ayarıyla aynı olmalı. Normalde bir konum 0,0625 sn sürer, en fazla 4096 konumla 4 dk 16 sn çalar. Yavaş modda konum 0,125 sn olur, süre 8 dk 32 sn'ye çıkar. Kodun içinde mod bilgisi yoktur, oyunda da aynı modu seç.</small></label>
+<select id="mode" class="c"><option value="0.0625" selected>Normal (oyun varsayılanı)</option><option value="0.125">Yavaş mod (oyunda yavaş oynatma açık)</option></select><small>Oyundaki çalma ayarıyla aynı seç. Normal en fazla 4 dk 16 sn, yavaş 8 dk 32 sn.</small></label>
 <label>Boşlukları azalt
-<select id="cap" class="c"><option value="0">Kapalı</option><option value="2" selected>Hafif</option><option value="1.5">Orta</option><option value="1">Güçlü</option></select><small>İki nota arasındaki sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruşa indirir. Varsayılan Hafif'tir.</small></label>
+<select id="cap" class="c"><option value="0">Kapalı</option><option value="2" selected>Hafif</option><option value="1.5">Orta</option><option value="1">Güçlü</option></select><small>Nota arası sessizliği kısaltır. Hafif 2, Orta 1.5, Güçlü 1 vuruş.</small></label>
 <label>En uzun nota (vuruş, 0 = kapalı)
-<input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları (uzun bas notaları) eler. 2-4 uygun aralıktır, 0 kapatır.</small></label>
+<input type="number" id="maxdur" class="c" value="0" min="0" step="0.5"><small>Bu vuruştan uzun notaları eler. 0 kapalı.</small></label>
 <label>Temiz ses
-<select id="clean" class="c"><option value="0" selected>Kapalı</option><option value="0.2">Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler. Varsayılan kapalıdır. Hafif az, Güçlü hızlı melodileri çok seyreltir.</small></label>
+<select id="clean" class="c"><option value="0" selected>Kapalı</option><option value="0.2">Hafif</option><option value="0.3">Orta</option><option value="0.45">Güçlü</option></select><small>Birbirine çok yakın notalardan birini eler.</small></label>
 <label>Şarkıyı uzat (kat)
-<input type="number" id="rep" class="c" value="1" min="1" max="10" step="1"><small>Şarkıyı yazdığın kat kadar art arda tekrarlar. Kısa şarkılar için 2-3 uygun aralıktır.</small></label>
+<input type="number" id="rep" class="c" value="1" min="1" max="10" step="1"><small>Şarkıyı art arda tekrarlar.</small></label>
 <label>Başlangıç vuruşu
-<input type="number" id="from" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruştan başlatır. Vuruş numarası yaz, örnek: 32.</small></label>
+<input type="number" id="from" class="c" value="0" min="0" step="1"><small>Şarkı bu vuruştan başlar.</small></label>
 <label>Bitiş vuruşu (0 = sona kadar)
-<input type="number" id="to" class="c" value="0" min="0" step="1"><small>Şarkıyı bu vuruşta bitirir. Örnek: 120, 0 sonuna kadar alır.</small></label>
+<input type="number" id="to" class="c" value="0" min="0" step="1"><small>Şarkı bu vuruşta biter. 0 sona kadar.</small></label>
 <label>Oktav kaydırma (başlangıç-bitiş:oktav)
-<input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Vuruş aralığındaki notaları oktav kaydırır. -1 bir oktav aşağı, 1 bir oktav yukarıdır. Örnek: 23-57:-1.</small></label>
+<input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Aralıktaki notaları oktav kaydırır. -1 aşağı, 1 yukarı.</small></label>
 </div>
-<label class="row"><input type="checkbox" id="trim" class="c" checked> <span>Baştaki sessizliği kırp<small>İlk nota hemen başlasın diye baştaki boşluğu siler.</small></span></label>
-<label class="row"><input type="checkbox" id="snap" class="c"> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar, ritim düzgünleşir.</small></span></label>
-<label class="row"><input type="checkbox" id="snap8" class="c"> <span>Izgarayı 8'lik nota yap<small>Izgara seçiliyken 16'lık yerine 8'lik notalara yuvarlar, ritim daha sade olur.</small></span></label>
-<label class="row"><input type="checkbox" id="snapdrop" class="c"> <span>Izgarada aynı noktaya düşen notalardan birini ele<small>Çakışan notayı bir adım kaydırmak yerine eler (uzun olan kalır), ritim kaymaz.</small></span></label>
-<label class="row"><input type="checkbox" id="snaptempo" class="c"> <span>Izgarada tempoyu koru<small>Izgara aralığını tam sayıya yuvarlamaz, 120 BPM dışındaki şarkılarda tempo sapmasını önler. Aralıklar birkaç konumda 1 fark edebilir.</small></span></label>
-<label class="row"><input type="checkbox" id="minshort" class="c"> <span>Çok kısa notaları ele<small>Süresi 64'lük notadan kısa olan süs ve hayalet notaları siler. Kısa vuruşlu (staccato) parçalarda kapalı tut.</small></span></label>
-<label class="row"><input type="checkbox" id="mono" class="c" checked> <span>Aynı anda gelen notalardan en tizini al<small>Aynı anda çalan notalardan yalnızca en tiz olanı bırakır.</small></span></label>
+<label class="row"><input type="checkbox" id="trim" class="c" checked> <span>Baştaki sessizliği kırp<small>Baştaki boşluğu siler.</small></span></label>
+<label class="row"><input type="checkbox" id="snap" class="c"> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar.</small></span></label>
+<label class="row"><input type="checkbox" id="snap8" class="c"> <span>Izgarayı 8'lik nota yap<small>Izgarayı 8'lik nota yapar, ritim sadeleşir.</small></span></label>
+<label class="row"><input type="checkbox" id="snapdrop" class="c"> <span>Izgarada aynı noktaya düşen notalardan birini ele<small>Çakışan notayı kaydırmak yerine eler.</small></span></label>
+<label class="row"><input type="checkbox" id="snaptempo" class="c"> <span>Izgarada tempoyu koru<small>120 BPM dışı şarkılarda tempo sapmasını önler.</small></span></label>
+<label class="row"><input type="checkbox" id="minshort" class="c"> <span>Çok kısa notaları ele<small>64'lükten kısa süs notalarını siler.</small></span></label>
+<label class="row"><input type="checkbox" id="mono" class="c" checked> <span>Aynı anda gelen notalardan en tizini al<small>Aynı anda çalanlardan en tizi bırakır.</small></span></label>
 <div class="btns"><button type="button" id="reset" class="alt">Varsayılan ayarlara dön</button></div>
 </section>
 
