@@ -22,12 +22,12 @@ const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
-function save() { try { localStorage.setItem('szv', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
-try { const s = JSON.parse(localStorage.getItem('szv') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
+function save() { try { localStorage.setItem('szv2', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
+try { const s = JSON.parse(localStorage.getItem('szv2') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
-if ($('cap').selectedIndex < 0) $('cap').value = '1.5';
+if ($('cap').selectedIndex < 0) $('cap').value = '2';
 
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
@@ -304,7 +304,7 @@ function getNotes0() {
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
-  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md) && (!$('minshort').checked || n.d >= midi.ppq / 16)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
   if ($('mono').checked) {
     const r = [];
     for (const n of a) { const l = r[r.length - 1]; if (l && n.s - l.s < 0.02) { if (n.p > l.p) r[r.length - 1] = n; } else r.push(n); }
@@ -320,16 +320,20 @@ function run() {
   const b = force ? { si: force.si, r: force.r } : best(notes, +$('scale').value);
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
-  const st = { exact: 0, fold: 0, near: 0, push: 0 };
-  const snap = $('snap').checked, u = Math.max(1, Math.round(beat / 4 / speed / step));
+  const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0 };
+  const snap = $('snap').checked, g = beat / ($('snap8').checked ? 2 : 4), ideal = g / speed / step;
+  const u = $('snaptempo').checked ? Math.max(0.5, ideal) : Math.max(1, Math.round(ideal));
   const mp = mapSeq(notes, set); let ix = 0;
   let cur = 0, prev = null, lastPos = 0, res = [];
   for (const n of notes) {
     if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
     prev = n.s;
     const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
-    let pos = snap ? Math.round(cur / (beat / 4)) * u + 1 : Math.round(cur / speed / step) + 1;
-    if (pos <= lastPos) { pos = lastPos + 1; st.push++; }
+    let pos = snap ? Math.round(Math.round(cur / g) * u) + 1 : Math.round(cur / speed / step) + 1;
+    if (pos <= lastPos) {
+      if (snap && $('snapdrop').checked && res.length) { const l = res[res.length - 1]; if ((n.d || 0) > l[2]) { l[1] = i; l[2] = n.d || 0; } st.drop++; continue; }
+      pos = lastPos + 1; st.push++;
+    }
     lastPos = pos; res.push([pos, i, n.d || 0]);
   }
   const mg = Math.ceil(+$('clean').value / step - 1e-9), before = res.length;
@@ -358,13 +362,14 @@ function run() {
   const tr = gameRoot - b.r;
   $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
-    `Çeyrek nota yaklaşık ${(snap ? u * 4 : beat / speed / step).toFixed(1)} konum. ` +
+    `Çeyrek nota yaklaşık ${(snap ? (beat / g) * u : beat / speed / step).toFixed(1)} konum. ` +
     (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
-  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Hızı yükselt ya da boşluk sınırını düşür.`);
+  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
+  if (st.drop) w.push(`${st.drop} nota aynı ızgara noktasına denk geldiği için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
   $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
 }
@@ -405,7 +410,7 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '60', mode: '0.125', cap: '1.5', maxdur: '0', clean: '0.2', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
