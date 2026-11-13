@@ -62,7 +62,7 @@ function parseMidi(buf) {
         if (h === 9 && b > 0) (on[k] = on[k] || []).push(tick);
         else if (h === 8 || h === 9) {
           const q = on[k];
-          if (q && q.length) { const st = q.shift(); notes.push({ t: st, d: tick - st, p: a, c: ch }); }
+          if (q && q.length) { const st = q.shift(); notes.push({ t: st, d: tick - st, p: a, c: ch, k: t }); }
         }
       }
     }
@@ -70,8 +70,10 @@ function parseMidi(buf) {
   }
   tempos.sort((x, y) => x[0] - y[0]);
   if (!tempos.length || tempos[0][0] > 0) tempos.unshift([0, 500000]);
+  const multi = new Set(notes.map(n => n.k)).size > 1;
+  if (multi) notes.forEach(n => (n.c = n.k * 16 + n.c));
   notes.sort((x, y) => x.t - y.t || x.p - y.p);
-  return { ppq, notes, tempos, progs };
+  return { ppq, notes, tempos, progs, multi };
 }
 
 function makeSec(m) {
@@ -88,13 +90,13 @@ function listChannels() {
     a.forEach(n => { if (n.t < end - 1) ov++; end = Math.max(end, n.t + n.d); });
     const ps = a.map(n => n.p).sort((x, y) => x - y);
     const poly = ov / a.length, med = ps[ps.length >> 1];
-    const score = a.length * Math.pow(1 - poly, 3) * (med >= 52 && +c !== 9 ? 1 : 0.2);
+    const score = a.length * Math.pow(1 - poly, 3) * (med >= 52 && (+c & 15) !== 9 ? 1 : 0.2);
     return { c: +c, n: a.length, lo: ps[0], hi: ps[ps.length - 1], poly, score };
   });
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
   $('chans').innerHTML = rows.map(r =>
     `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
-     ${midi.names ? midi.names[r.c] : 'Kanal ' + (r.c + 1) + (r.c === 9 ? ' (davul)' : midi.progs && r.c in midi.progs ? ' (' + FAM[midi.progs[r.c] >> 3] + ')' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
+     ${midi.names ? midi.names[r.c] : (midi.multi ? 'Parça ' + ((r.c >> 4) + 1) + ', kanal ' : 'Kanal ') + ((r.c & 15) + 1) + ((r.c & 15) === 9 ? ' (davul)' : midi.progs && (r.c & 15) in midi.progs ? ' (' + FAM[midi.progs[r.c & 15] >> 3] + ')' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
 }
 
 // ---------- MusicXML ----------
