@@ -38,6 +38,8 @@ main{position:relative}
 .side li{margin:4px 0}
 .side p{margin:8px 0 0;color:var(--mut);font-size:13px}
 .side a{color:var(--ac)}
+.part{border-top:1px solid var(--bd);padding-top:10px;margin-top:10px}
+.part textarea{min-height:0}
 @media(min-width:1300px){.side{position:absolute;top:96px;left:calc(100% + 8px);width:250px;margin:0}}
 </style>
 </head>
@@ -106,6 +108,8 @@ main{position:relative}
 <input type="number" id="from" class="c" value="0" min="0" step="1"><small>Şarkı bu vuruştan başlar.</small></label>
 <label>Bitiş vuruşu (0 = sona kadar)
 <input type="number" id="to" class="c" value="0" min="0" step="1"><small>Şarkı bu vuruşta biter. 0 sona kadar.</small></label>
+<label>Aynı anda gelen nota
+<select id="pick" class="c"><option value="near" selected>Melodiye en yakın</option><option value="high">En tiz</option><option value="low">En pes</option></select><small>Melodiye en yakın, ani tiz sıçramaları önler.</small></label>
 <label>Oktav kaydırma (başlangıç-bitiş:oktav)
 <input type="text" id="shifts" class="c" placeholder="23-57:-1, 340-410:1"><small>Aralıktaki notaları oktav kaydırır. -1 aşağı, 1 yukarı.</small></label>
 </div>
@@ -113,9 +117,11 @@ main{position:relative}
 <label class="row"><input type="checkbox" id="snap" class="c"> <span>Ritmi ızgaraya oturt (16'lık nota tam sayı konum olsun)<small>16'lık notaları eşit aralıklara yuvarlar.</small></span></label>
 <label class="row"><input type="checkbox" id="snap8" class="c"> <span>Izgarayı 8'lik nota yap<small>Izgarayı 8'lik nota yapar, ritim sadeleşir.</small></span></label>
 <label class="row"><input type="checkbox" id="snapdrop" class="c"> <span>Izgarada aynı noktaya düşen notalardan birini ele<small>Çakışan notayı kaydırmak yerine eler.</small></span></label>
-<label class="row"><input type="checkbox" id="snaptempo" class="c"> <span>Izgarada tempoyu koru<small>120 BPM dışı şarkılarda tempo sapmasını önler.</small></span></label>
+<label class="row"><input type="checkbox" id="snaptempo" class="c" checked> <span>Izgarada tempoyu koru<small>120 BPM dışı şarkılarda tempo sapmasını önler.</small></span></label>
 <label class="row"><input type="checkbox" id="minshort" class="c"> <span>Çok kısa notaları ele<small>64'lükten kısa süs notalarını siler.</small></span></label>
-<label class="row"><input type="checkbox" id="mono" class="c" checked> <span>Aynı anda gelen notalardan en tizini al<small>Aynı anda çalanlardan en tizi bırakır.</small></span></label>
+<label class="row"><input type="checkbox" id="mono" class="c" checked> <span>Aynı anda gelen notalardan tek nota al<small>Hangisini alacağını yukarıdaki "Aynı anda gelen nota" ayarı belirler.</small></span></label>
+<label class="row"><input type="checkbox" id="chord" class="c"> <span>Geçerli akorları koru (en fazla 2 nota)<small>Elenen nota, oyunun izin verdiği bir akor oluşturuyorsa eklenir. Çoğu nota çifti akor olamaz.</small></span></label>
+<label class="row"><input type="checkbox" id="autosplit" class="c"> <span>Ton değişimini algıla, şarkıyı bölümlere ayır<small>Her bölüm kendi ölçeğiyle ayrı kod olur, yuvarlanan nota azalır.</small></span></label>
 <div class="btns"><button type="button" id="reset" class="alt">Varsayılan ayarlara dön</button></div>
 </section>
 
@@ -129,6 +135,7 @@ main{position:relative}
 </div>
 <p id="stats"></p>
 <p id="warn"></p>
+<div id="parts"></div>
 <details><summary>Pozisyon+Harf Listesi</summary>
 <textarea id="list" readonly rows="4"></textarea></details>
 </section>

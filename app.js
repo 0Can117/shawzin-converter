@@ -16,16 +16,18 @@ const SCALES = [
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const NOTE_CHARS = 'BCEJKMRSUhik'; // A..L harflerinin koddaki karşılığı
 const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici efekt', 'Etnik', 'Perküsyon', 'Ses efekti'];
+const MULTI = { defghijkl: '/', deghjk: '7', efhikl: '+', dfgijl: '9', dgj: '5', ehk: '6', fil: '8', ghijkl: '3', hikl: '2', ghjk: 'z', gijl: '1', il: '0', hk: 'y', gj: 'x', defjkl: 'v', dejk: 'r', dfjl: 't', efkl: 'u', dj: 'p', ek: 'q', fl: 's', defghi: 'f', efhi: 'e', dfgi: 'd', degh: 'b', dg: 'Z', eh: 'a', fi: 'c', jkl: 'n', jk: 'j', kl: 'm', jl: 'l', ghi: 'X', hi: 'W', gh: 'T', gi: 'V', def: 'P', ef: 'O', de: 'L', df: 'N', abc: 'H', ab: 'D', bc: 'G', ac: 'F' };
+const chordChar = (i, j) => MULTI[['abcdefghijkl'[i], 'abcdefghijkl'[j]].sort().join('')];
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
 
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
-function save() { try { localStorage.setItem('szv2', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
-try { const s = JSON.parse(localStorage.getItem('szv2') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
+function save() { try { localStorage.setItem('szv3', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
+try { const s = JSON.parse(localStorage.getItem('szv3') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
 if ($('cap').selectedIndex < 0) $('cap').value = '2';
 
@@ -130,7 +132,7 @@ function parseXml(txt) {
     for (const m of part.children) {
       if (m.tagName !== 'measure') continue;
       const dv = tx(m, 'divisions'); if (dv) div = +dv;
-      const f = 960 / div, M = { fwd: false, back: false, ends: null, times: 2, notes: [], len: 0 };
+      const f = 960 / div, M = { fwd: false, back: false, ends: null, times: 2, notes: [], len: 0, tempos: [] };
       for (const r of m.getElementsByTagName('repeat')) {
         if (r.getAttribute('direction') === 'forward') M.fwd = true; else { M.back = true; M.times = +r.getAttribute('times') || 2; }
       }
@@ -143,7 +145,8 @@ function parseXml(txt) {
       let cur = 0, last = 0, mx = 0;
       for (const n of m.children) {
         const t = n.tagName, du = +tx(n, 'duration') || 0;
-        if (t === 'backup') cur -= du;
+        if (t === 'direction' || t === 'sound') { const sn = t === 'sound' ? n : n.querySelector('sound[tempo]'), tv = sn && +sn.getAttribute('tempo'); if (tv > 0) M.tempos.push([Math.round(cur * f), tv]); }
+        else if (t === 'backup') cur -= du;
         else if (t === 'forward') cur += du;
         else if (t === 'note') {
           if (n.getElementsByTagName('grace')[0]) continue;
@@ -161,14 +164,17 @@ function parseXml(txt) {
     parts.push(ms);
   });
   if (!parts.length) throw new Error('MusicXML içinde parça bulunamadı.');
-  const order = playOrder(parts[0]), notes = [];
-  parts.forEach(ms => {
+  const order = playOrder(parts[0]), notes = [], tev = [];
+  parts.forEach((ms, pi) => {
     let base = 0;
-    for (const i of order) { const M = ms[i]; if (M) M.notes.forEach(n => notes.push({ c: n.c, t: base + n.t, d: n.d, p: n.p })); base += parts[0][i].len; }
+    for (const i of order) { const M = ms[i]; if (M) { M.notes.forEach(n => notes.push({ c: n.c, t: base + n.t, d: n.d, p: n.p })); if (pi === 0) M.tempos.forEach(([o, bp]) => tev.push([base + o, Math.round(6e7 / bp)])); } base += parts[0][i].len; }
   });
   if (!notes.length) throw new Error('Dosyada nota bulunamadı.');
   notes.sort((a, b) => a.t - b.t || a.p - b.p);
-  return { ppq: 960, notes, tempos: [[0, Math.round(6e7 / bpm)]], names };
+  tev.sort((x, y) => x[0] - y[0]);
+  const tempos = tev.filter((e, k) => !(k + 1 < tev.length && tev[k + 1][0] === e[0]));
+  if (!tempos.length || tempos[0][0] > 0) tempos.unshift([0, Math.round(6e7 / bpm)]);
+  return { ppq: 960, notes, tempos, names };
 }
 async function unzipXml(buf) {
   const v = new DataView(buf), u = new Uint8Array(buf);
@@ -294,7 +300,7 @@ function best(ns, only) {
 function getNotes() {
   const r = getNotes0(), f = +$('from').value, t = +$('to').value;
   const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
-  r.notes = r.notes.map(n => { const b = n.s / r.beat; let p = n.p; for (const m of sh) if (b >= +m[1] && b < +m[2]) p += 12 * +m[3]; return { s: n.s, p, b, d: n.d }; })
+  r.notes = r.notes.map(n => { const b = r.ppq && n.tk !== undefined ? n.tk / r.ppq : n.s / r.beat; let o = 0; for (const m of sh) if (b >= +m[1] && b < +m[2]) o += 12 * +m[3]; return { s: n.s, p: n.p + o, b, q: n.q, d: n.d, x: (n.x || []).map(q => q + o) }; })
     .filter(n => n.b >= f && (!t || n.b < t));
   return r;
 }
@@ -306,37 +312,58 @@ function getNotes0() {
   if (!midi) return { notes: [], beat: 1 };
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
-  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md) && (!$('minshort').checked || n.d >= midi.ppq / 16)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t) }));
+  const tempoAt = tk => { let i = midi.tempos.length - 1; while (i > 0 && midi.tempos[i][0] > tk) i--; return midi.tempos[i][1] / 1e6; };
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md) && (!$('minshort').checked || n.d >= midi.ppq / 16)).map(n => ({ s: sec(n.t), p: n.p, d: sec(n.t + n.d) - sec(n.t), tk: n.t, q: tempoAt(n.t) }));
   if ($('mono').checked) {
-    const r = [];
-    for (const n of a) { const l = r[r.length - 1]; if (l && n.s - l.s < 0.02) { if (n.p > l.p) r[r.length - 1] = n; } else r.push(n); }
+    const pk = $('pick').value, ch = $('chord').checked, r = [];
+    for (let i = 0; i < a.length;) {
+      let j = i + 1; while (j < a.length && a[j].s - a[i].s < 0.02) j++;
+      const g = a.slice(i, j), pv = r.length ? r[r.length - 1].p : null; i = j;
+      let m = g[0];
+      for (const n of g) {
+        const dn = pv === null ? 0 : Math.abs(n.p - pv), dm = pv === null ? 0 : Math.abs(m.p - pv);
+        if (pk === 'low' ? n.p < m.p : pk === 'near' && pv !== null ? (dn < dm || (dn === dm && n.p > m.p)) : n.p > m.p) m = n;
+      }
+      r.push({ s: m.s, p: m.p, d: m.d, tk: m.tk, q: m.q, x: ch ? g.filter(n => n !== m).map(n => n.p) : [] });
+    }
     a = r;
   }
-  return { notes: a, beat: midi.tempos[0][1] / 1e6 };
+  return { notes: a, beat: midi.tempos[0][1] / 1e6, ppq: midi.ppq };
 }
 
-function run() {
-  const { notes, beat, force } = getNotes();
-  $('warn').textContent = bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') : '';
-  if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; out = []; return; }
+let parts = [];
+function build(notes, beat, force, o = {}) {
   const b = force ? { si: force.si, r: force.r } : best(notes, +$('scale').value);
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
-  const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, cap = +$('cap').value * beat;
-  const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0 };
-  const snap = $('snap').checked, g = beat / ($('snap8').checked ? 2 : 4), ideal = g / speed / step;
-  const u = $('snaptempo').checked ? Math.max(0.5, ideal) : Math.max(1, Math.round(ideal));
+  const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, capB = +$('cap').value;
+  const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0, chord: 0 };
+  const trim = o.trim !== undefined ? o.trim : $('trim').checked, chordOn = $('chord').checked;
+  const snap = $('snap').checked, gu = $('snap8').checked ? 0.5 : 0.25;
+  const unit = q => { const id = q * gu / speed / step; return $('snaptempo').checked ? Math.max(0.5, id) : Math.max(1, Math.round(id)); };
   const mp = mapSeq(notes, set); let ix = 0;
-  let cur = 0, prev = null, lastPos = 0, res = [];
+  let cur = 0, curB = 0, prev = null, prevB = 0, P = 0, kPrev = 0, lastPos = 0, res = [];
   for (const n of notes) {
-    if (prev === null) cur = $('trim').checked ? 0 : n.s; else { const d = n.s - prev; cur += cap > 0 ? Math.min(d, cap) : d; }
-    prev = n.s;
+    let qi = n.q || beat;
+    if (prev === null) { cur = trim ? 0 : n.s; curB = trim ? 0 : n.b; }
+    else { const d = n.s - prev, db = n.b - prevB, cp = capB > 0 && db > capB; if (db > 1e-9) qi = d / db; cur += cp ? d * capB / db : d; curB += cp ? capB : db; }
+    prev = n.s; prevB = n.b;
     const [i, k] = mp[ix++]; st[['exact', 'fold', 'near'][k]]++;
-    let pos = snap ? Math.round(Math.round(cur / g) * u) + 1 : Math.round(cur / speed / step) + 1;
+    let j = -1;
+    if (chordOn && n.x && n.x.length) {
+      let bd = 1e9;
+      for (const q of n.x) for (let jj = 0; jj < 12; jj++) {
+        if (jj === i || (((set[jj] - q) % 12) + 12) % 12 !== 0 || !chordChar(i, jj)) continue;
+        const d = Math.abs(set[jj] - q); if (d < bd) { bd = d; j = jj; }
+      }
+    }
+    let pos;
+    if (snap) { const kk = Math.round(curB / gu); P += (kk - kPrev) * unit(qi); kPrev = kk; pos = Math.round(P) + 1; }
+    else pos = Math.round(cur / speed / step) + 1;
     if (pos <= lastPos) {
-      if (snap && $('snapdrop').checked && res.length) { const l = res[res.length - 1]; if ((n.d || 0) > l[2]) { l[1] = i; l[2] = n.d || 0; } st.drop++; continue; }
+      if (snap && $('snapdrop').checked && res.length) { const l = res[res.length - 1]; if ((n.d || 0) > l[2]) { l[1] = i; l[2] = n.d || 0; l[3] = j; } st.drop++; continue; }
       pos = lastPos + 1; st.push++;
     }
-    lastPos = pos; res.push([pos, i, n.d || 0]);
+    lastPos = pos; res.push([pos, i, n.d || 0, j]);
   }
   const mg = Math.ceil(+$('clean').value / step - 1e-9), before = res.length;
   if (mg >= 2) {
@@ -350,30 +377,93 @@ function run() {
   st.thin = before - res.length;
   const rep = Math.min(10, Math.max(1, Math.floor(+$('rep').value) || 1));
   let useRep = rep;
-  if (rep > 1) {
+  if (rep > 1 && !o.noRep) {
     const first = res[0][0], span = lastPos - first + Math.max(2, Math.round(beat / speed / step)), one = res.slice();
     useRep = Math.min(rep, Math.max(1, 1 + Math.floor((4096 - lastPos) / span)));
-    for (let k = 1; k < useRep; k++) for (const [p, i] of one) res.push([p + k * span, i]);
+    for (let k = 1; k < useRep; k++) for (const e of one) res.push([e[0] + k * span, ...e.slice(1)]);
   }
-  out = res.filter(x => x[0] <= 4096);
-  const enc = a => String(b.si + 1) + a.map(([p, i]) => NOTE_CHARS[i] + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
-  const lst = a => a.map(([p, i]) => p + String.fromCharCode(65 + i)).join(',');
-  $('code').value = enc(out);
-  $('list').value = lst(out);
-  last = { iv, gameRoot, step };
-  const tr = gameRoot - b.r;
-  $('stats').textContent = `${out.length} nota, yaklaşık ${Math.round(out[out.length - 1][0] * step)} sn, ölçek: ${name}. ` +
+  const outA = res.filter(x => x[0] <= 4096);
+  st.chord = outA.filter(x => x[3] >= 0).length;
+  const enc = a => String(b.si + 1) + a.map(([p, i, , j]) => (j >= 0 ? chordChar(i, j) : NOTE_CHARS[i]) + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
+  const lst = a => a.map(([p, i, , j]) => p + String.fromCharCode(65 + i) + (j >= 0 ? '+' + String.fromCharCode(65 + j) : '')).join(',');
+  const tr = gameRoot - b.r, secs = Math.round(outA[outA.length - 1][0] * step);
+  const trTxt = tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.';
+  const stats = `${outA.length} nota, yaklaşık ${secs} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
-    `Çeyrek nota yaklaşık ${(snap ? (beat / g) * u : beat / speed / step).toFixed(1)} konum. ` +
-    (tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.') +
+    (st.chord ? `${st.chord} konumda akor kullanıldı. ` : '') +
+    `Çeyrek nota yaklaşık ${(snap ? unit(notes[0].q || beat) / gu : (notes[0].q || beat) / speed / step).toFixed(1)} konum. ` + trTxt +
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
+  const brief = `Ölçek: ${name}, ${outA.length} nota, yaklaşık ${secs} sn, ${st.near} nota yuvarlandı. ${trTxt}`;
   const w = [];
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
-  if (res.length > out.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - out.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
+  if (res.length > outA.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - outA.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
   if (st.drop) w.push(`${st.drop} nota aynı ızgara noktasına denk geldiği için elendi.`);
   if (st.push) w.push(`${st.push} nota aynı konuma denk geldiği için bir adım kaydırıldı.`);
-  $('warn').textContent = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + w.join(' ');
+  return { code: enc(outA), list: lst(outA), out: outA, last: { iv, gameRoot, step }, stats, brief, warn: w.join(' '), st };
+}
+
+// Ton değişimi: notaları, her bölümde en az nota dışarıda kalacak şekilde parçalara böler
+function splitKeys(notes) {
+  const n = notes.length; if (n < 40) return [0, n];
+  const only = +$('scale').value;
+  const sis = only >= 0 ? [only] : SCALES.map((_, i) => i).filter(i => SCALES[i][0] !== 'Chromatic');
+  const H = [new Array(12).fill(0)];
+  notes.forEach((x, i) => { const h = H[i].slice(); h[((x.p % 12) + 12) % 12]++; H.push(h); });
+  const cov = [];
+  for (const si of sis) {
+    const pcs = [...new Set(SCALES[si][1].map(v => v % 12))];
+    for (let r = 0; r < 12; r++) { const m = new Array(12).fill(0); pcs.forEach(p => (m[(p + r) % 12] = 1)); cov.push(m); }
+  }
+  const cost = (i, j) => { let bst = 0; for (const m of cov) { let c = 0; for (let k = 0; k < 12; k++) if (m[k]) c += H[j][k] - H[i][k]; if (c > bst) bst = c; } return (j - i) - bst; };
+  let cand = [0];
+  for (let i = 1; i < n; i++) if (notes[i].b - notes[i - 1].b >= 1 || Math.floor(notes[i].b / 8) !== Math.floor(notes[i - 1].b / 8)) cand.push(i);
+  cand.push(n);
+  if (cand.length > 400) { const s = Math.ceil(cand.length / 400); cand = cand.filter((_, k) => k % s === 0 || k === cand.length - 1); }
+  const LAM = 6, MIN = 12, f = [0], from = [0];
+  for (let b = 1; b < cand.length; b++) {
+    f[b] = Infinity;
+    for (let a2 = 0; a2 < b; a2++) {
+      if (cand[b] - cand[a2] < MIN && !(a2 === 0 && b === cand.length - 1)) continue;
+      const c = f[a2] + cost(cand[a2], cand[b]) + (a2 ? LAM : 0);
+      if (c < f[b]) { f[b] = c; from[b] = a2; }
+    }
+  }
+  const cuts = []; for (let b = cand.length - 1; b > 0; b = from[b]) cuts.unshift(cand[b]);
+  cuts.unshift(0);
+  return cuts;
+}
+function renderParts(notes, beat, force, R) {
+  const box = $('parts'); parts = []; box.innerHTML = '';
+  if (!$('autosplit').checked || force) return;
+  const cuts = splitKeys(notes);
+  if (cuts.length < 3) { box.innerHTML = '<p class="hint">Ton değişimi bulunamadı, tek kod yeterli.</p>'; return; }
+  let tot = 0, html = '';
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const sub = notes.slice(cuts[k], cuts[k + 1]);
+    const P = build(sub, beat, null, { trim: true, noRep: true });
+    parts.push(P.code); tot += P.st.near;
+    html += `<div class="part"><b>Bölüm ${k + 1}</b> <small>vuruş ${Math.round(sub[0].b)}-${Math.round(sub[sub.length - 1].b)}</small>` +
+      `<textarea readonly rows="3" aria-label="Bölüm ${k + 1} kodu">${P.code}</textarea>` +
+      `<div class="btns"><button type="button" class="alt" data-part="${k}">Kopyala</button></div><p class="hint">${P.brief}</p></div>`;
+  }
+  box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Tek kodda ${R.st.near} nota yuvarlanıyor, bölümlerde toplam ${tot}. Bölümleri oyunda sırayla çal.</p>` + html;
+}
+
+function tempoInfo() {
+  if (!midi || document.querySelector('input[name=src]:checked').value !== 'midi') return '';
+  const bp = midi.tempos.map(t => 6e7 / t[1]), lo = Math.min(...bp), hi = Math.max(...bp);
+  return hi - lo > 1 ? ` Tempo değişiyor (${Math.round(lo)}-${Math.round(hi)} BPM), süreler buna göre ayarlandı.` : '';
+}
+function run() {
+  const { notes, beat, force } = getNotes();
+  const bd = bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '';
+  $('parts').innerHTML = ''; parts = [];
+  if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; $('warn').textContent = bd; out = []; return; }
+  const R = build(notes, beat, force);
+  out = R.out; last = R.last;
+  $('code').value = R.code; $('list').value = R.list; $('stats').textContent = R.stats + tempoInfo(); $('warn').textContent = bd + R.warn;
+  renderParts(notes, beat, force, R);
 }
 
 // ---------- Dinleme ----------
@@ -382,7 +472,7 @@ function play() {
   stop(); if (!out.length) return;
   ac = ac || new AudioContext();
   const t0 = ac.currentTime + 0.1;
-  out.forEach(([pos, i]) => tone(440 * Math.pow(2, (last.gameRoot + last.iv[i] - 69) / 12), t0 + (pos - 1) * last.step, 0.9));
+  out.forEach(([pos, i, , j]) => { for (const x of j >= 0 ? [i, j] : [i]) tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (pos - 1) * last.step, 0.9); });
 }
 function tone(f, t, len) {
   const o = ac.createOscillator(), g = ac.createGain();
@@ -412,11 +502,12 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'near', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
 };
+$('parts').addEventListener('click', e => { const k = e.target.dataset.part; if (k === undefined) return; navigator.clipboard.writeText(parts[+k]); e.target.textContent = 'Kopyalandı'; setTimeout(() => (e.target.textContent = 'Kopyala'), 1500); });
 $('play').onclick = play;
 $('stop').onclick = stop;
 run();
