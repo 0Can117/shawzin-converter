@@ -15,8 +15,8 @@ const SCALES = [
 ];
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const NOTE_CHARS = 'BCEJKMRSUhik'; // A..L harflerinin koddaki karşılığı
-const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici efekt', 'Etnik', 'Perküsyon', 'Ses efekti'];
-const MULTI = { defghijkl: '/', deghjk: '7', efhikl: '+', dfgijl: '9', dgj: '5', ehk: '6', fil: '8', ghijkl: '3', hikl: '2', ghjk: 'z', gijl: '1', il: '0', hk: 'y', gj: 'x', defjkl: 'v', dejk: 'r', dfjl: 't', efkl: 'u', dj: 'p', ek: 'q', fl: 's', defghi: 'f', efhi: 'e', dfgi: 'd', degh: 'b', dg: 'Z', eh: 'a', fi: 'c', jkl: 'n', jk: 'j', kl: 'm', jl: 'l', ghi: 'X', hi: 'W', gh: 'T', gi: 'V', def: 'P', ef: 'O', de: 'L', df: 'N', abc: 'H', ab: 'D', bc: 'G', ac: 'F' };
+const FAM = ['Piyano', 'Kromatik perküsyon', 'Org', 'Gitar', 'Bas', 'Yaylılar', 'Topluluk', 'Bakır nefesliler', 'Kamışlı nefesliler', 'Flüt grubu', 'Sentezleyici lead', 'Sentezleyici pad', 'Sentezleyici lead', 'Sentezleyici pad'];
+const MULTI = { defghijkl: '/', deghjk: '7', efhikl: '+', dfgijl: '9', dgj: '5', ehk: '6', fil: '8', ghijkl: '3', hikl: '2', ghjk: 'z', gijl: '1', il: '0', hk: 'y', gj: 'x', defjkl: 'v', dejk: 'r', dfikl: 'u', deghj: 'w', fghjkl: 't', hik: 's', dijkl: 'q', bghjkl: 'p', dfgk: 'n', ek: 'm', defgh: 'l', cdefg: 'k', cdef: 'j', abcde: 'i' };
 const chordChar = (i, j) => MULTI[['abcdefghijkl'[i], 'abcdefghijkl'[j]].sort().join('')];
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const nm = p => NN[p % 12] + (Math.floor(p / 12) - 1);
@@ -25,7 +25,7 @@ let xmlSrc = null, lastOrd = '';
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'padm', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv4', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv4') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -99,7 +99,8 @@ function listChannels() {
   const top = rows.reduce((x, y) => (y.score > x.score ? y : x), rows[0]);
   $('chans').innerHTML = rows.map(r =>
     `<div style="display:flex;gap:8px;align-items:center"><label class="row"><input type="checkbox" class="c" value="${r.c}" ${r === top ? 'checked' : ''}>
-     ${midi.names ? midi.names[r.c] : (midi.multi ? 'Parça ' + ((r.c >> 4) + 1) + ', kanal ' : 'Kanal ') + ((r.c & 15) + 1) + ((r.c & 15) === 9 ? ' (davul)' : midi.progs && (r.c & 15) in midi.progs ? ' (' + FAM[midi.progs[r.c & 15] >> 3] + ')' : '')}: ${r.n} nota, ${nm(r.lo)}-${nm(r.hi)}, çok seslilik %${Math.round(r.poly * 100)}</label><button type="button" class="alt" data-pv="${r.c}">Dinle</button></div>`).join('');
+     ${midi.names ? midi.names[r.c] : (midi.multi ? 'Parça ' + ((r.c >> 4) + 1) + ', kanal ' : 'Kanal ') + ((r.c & 15) + 1) + ((r.c & 15) === 9 ? ' (davul)' : midi.progs && (r.c & 15) in midi.progs ? ' (' + FAM[midi.progs[r.c & 15]] + ')' : '')}
+     </label></div>`).join('');
 }
 
 // ---------- MusicXML ----------
@@ -158,7 +159,7 @@ function parseXml(txt, ord) {
       let cur = 0, last = 0, mx = 0;
       for (const n of m.children) {
         const t = n.tagName, du = +tx(n, 'duration') || 0;
-        if (t === 'direction' || t === 'sound') { const sn = t === 'sound' ? n : n.querySelector('sound[tempo]'), tv = sn && +sn.getAttribute('tempo'); if (tv > 0) M.tempos.push([Math.round(cur * f), tv]); }
+        if (t === 'direction' || t === 'sound') { const sn = t === 'sound' ? n : n.querySelector('sound[tempo]'), tv = sn && +sn.getAttribute('tempo'); if (tv > 0) M.tempos.push([Math.round(cur * f), Math.round(6e7 / tv)]); }
         else if (t === 'backup') cur -= du;
         else if (t === 'forward') cur += du;
         else if (t === 'note') {
@@ -186,7 +187,9 @@ function parseXml(txt, ord) {
   const po = ord ? parseOrder(ord, parts[0].length) : null, order = po && po.o.length ? po.o : playOrder(parts[0]), notes = [], tev = [];
   parts.forEach((ms, pi) => {
     let base = 0;
-    for (const i of order) { const M = ms[i]; if (M) { M.notes.forEach(n => notes.push({ c: n.c, t: base + n.t, d: n.d, p: n.p })); if (pi === 0) M.tempos.forEach(([o, bp]) => tev.push([base + o, Math.round(6e7 / bp)])); } base += parts[0][i].len; }
+    for (const i of order) { const M = ms[i]; if (M) { M.notes.forEach(n => notes.push({ c: n.c, t: base + n.t, d: n.d, p: n.p })); if (pi === 0) M.tempos.forEach(([o, bp]) => tev.push([base + o, bp])); }
+      base += M.len;
+    }
   });
   if (!notes.length) throw new Error('Dosyada nota bulunamadı.');
   notes.sort((a, b) => a.t - b.t || a.p - b.p);
@@ -343,7 +346,7 @@ function best(ns, only) {
 function getNotes() {
   const r = getNotes0(), f = +$('from').value, t = +$('to').value;
   const sh = [...$('shifts').value.matchAll(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*:\s*(-?\d+)/g)];
-  r.notes = r.notes.map(n => { const b = r.ppq && n.tk !== undefined ? n.tk / r.ppq : n.s / r.beat; let o = 0; for (const m of sh) if (b >= +m[1] && b < +m[2]) o += 12 * +m[3]; return { s: n.s, p: n.p + o, b, q: n.q, d: n.d, x: (n.x || []).map(q => q + o) }; })
+  r.notes = r.notes.map(n => { const b = r.ppq && n.tk !== undefined ? n.tk / r.ppq : n.s / r.beat; let o = 0; for (const m of sh) if (b >= +m[1] && b < +m[2]) o += 12 * +m[3]; return { s: n.s, p: n.p + o, b: n.b, d: n.d, q: n.q, x: n.x, tk: n.tk }; })
     .filter(n => n.b >= f && (!t || n.b < t));
   return r;
 }
@@ -359,8 +362,7 @@ function getNotes0() {
   const ov = +$('bpm').value, kk = ov > 0 ? (6e7 / midi.tempos[0][1]) / ov : 1;
   const on = [...document.querySelectorAll('#chans input:checked')].map(i => +i.value);
   const md = +$('maxdur').value * midi.ppq;
-  const tempoAt = tk => { let i = midi.tempos.length - 1; while (i > 0 && midi.tempos[i][0] > tk) i--; return midi.tempos[i][1] / 1e6; };
-  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md) && (!$('minshort').checked || n.d >= midi.ppq / 16)).map(n => ({ s: sec(n.t) * kk, p: n.p, d: (sec(n.t + n.d) - sec(n.t)) * kk, tk: n.t, q: tempoAt(n.t) * kk }));
+  let a = midi.notes.filter(n => on.includes(n.c) && (!md || n.d <= md) && (!$('minshort').checked || n.d >= midi.ppq / 16)).map(n => ({ s: sec(n.t) * kk, p: n.p, d: (sec(n.t + n.d) - sec(n.t)) * kk, b: sec(n.t) * kk, q: n.d, tk: n.t, x: [] }));
   if ($('mono').checked) {
     const pk = $('pick').value, ch = $('chord').checked, r = [];
     for (let i = 0; i < a.length;) {
@@ -443,7 +445,7 @@ function build(notes, beat, force, o = {}) {
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const brief = `Ölçek: ${name}, ${outA.length} nota, yaklaşık ${secs} sn, ${st.near} nota yuvarlandı. ${trTxt}`;
   const w = [];
-  if (snap && dev > 0.03) w.push(`Izgara tam sayı adımla çalıştığı için hız ayarı küçük değişimlerde etkisiz kalıyor ve tempo yaklaşık %${Math.round(dev * 100)} sapıyor. Hızın çalışması için "Izgarada tempoyu koru" kutusunu işaretle.`);
+  if (snap && dev > 0.03) w.push(`Izgara tam sayı adımla çalıştığı için hız ayarı küçük değişimlerde etkisiz kalıyor ve tempo yaklaşık %${Math.round(dev * 100)} sapıyor. Hızın çok düşürülmesi buna neden olur.`);
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > outA.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - outA.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
@@ -508,7 +510,7 @@ function tempoInfo() {
 }
 function run() {
   const { notes, beat, force } = getNotes();
-  const bd = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + (midi && midi.short && midi.short.length && document.querySelector('input[name=src]:checked').value === 'midi' ? `${midi.short.join(', ')}. ölçülerde süre eksik, ${midi.padded ? 'başa dinlenme eklendi' : 'tamamlanmadı, ritim kayabilir'}. Nota dosyasını kontrol et. ` : '');
+  const bd = (bad.length ? 'Okunamayan öğeler: ' + bad.join(' ') + '. ' : '') + (midi && midi.short && midi.short.length && document.querySelector('input[name=src]:checked').value === 'midi' ? `${midi.short.length} kısa ölçü atlandı. ` : '');
   $('parts').innerHTML = ''; parts = [];
   if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; $('warn').textContent = bd; out = []; return; }
   const R = build(notes, beat, force);
@@ -559,7 +561,7 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false, padm: true };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
