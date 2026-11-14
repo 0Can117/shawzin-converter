@@ -27,10 +27,10 @@ let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
 const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
-function save() { try { localStorage.setItem('szv4', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
-try { const s = JSON.parse(localStorage.getItem('szv4') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
+function save() { try { localStorage.setItem('szv5', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
+try { const s = JSON.parse(localStorage.getItem('szv5') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
-if ($('cap').selectedIndex < 0) $('cap').value = '0';
+document.querySelectorAll('select.c').forEach(s => { if (s.selectedIndex < 0) s.selectedIndex = 0; });
 
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
@@ -224,7 +224,7 @@ function simple2text(s, o0) {
   const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const out = []; let prev = null;
   for (const k of s.split(/\s+/).filter(x => x && x !== '|')) {
-    if (k === '_') { if (out.length) out[out.length - 1] = out[out.length - 1].replace(/:1$/, ':2'); continue; }
+    if (k === '_') { if (out.length) out[out.length - 1] = out[out.length - 1].replace(/:(\d+)$/, (_, d) => ':' + (+d + 1)); continue; }
     if (k.toLowerCase() === 'r') { out.push('r:1'); continue; }
     const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d?)(_?)$/i.exec(k);
     if (!m) { out.push('?' + k); continue; }
@@ -431,6 +431,7 @@ function build(notes, beat, force, o = {}) {
     for (let k = 1; k < useRep; k++) for (const e of one) res.push([e[0] + k * span, ...e.slice(1)]);
   }
   const outA = res.filter(x => x[0] <= 4096);
+  if (!outA.length) return { code: '', list: '', out: [], last: null, stats: '', brief: '', warn: 'Hiçbir nota 4096 konum sınırına sığmadı. "Baştaki sessizliği kırp" kutusunu işaretle ya da başlangıç vuruşunu artır.', st };
   st.chord = outA.filter(x => x[3] >= 0).length;
   const enc = a => String(b.si + 1) + a.map(([p, i, , j]) => (j >= 0 ? chordChar(i, j) : NOTE_CHARS[i]) + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
   const lst = a => a.map(([p, i, , j]) => p + String.fromCharCode(65 + i) + (j >= 0 ? '+' + String.fromCharCode(65 + j) : '')).join(',');
@@ -513,6 +514,7 @@ function run() {
   if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; $('warn').textContent = bd; out = []; return; }
   const R = build(notes, beat, force);
   out = R.out; last = R.last;
+  if (!R.out.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = ''; $('warn').textContent = bd + R.warn; return; }
   $('code').value = R.code; $('list').value = R.list; $('stats').textContent = R.stats + tempoInfo(); $('warn').textContent = bd + R.warn;
   renderParts(notes, beat, force, R);
 }
@@ -526,7 +528,7 @@ function stop() {
   if (ac) { try { ac.close(); } catch (e) {} ac = null; }
 }
 function play() {
-  stop(); if (!out.length) return;
+  stop(); if (!out.length || !last) return;
   ctx();
   const t0 = ac.currentTime + 0.1;
   out.forEach(([pos, i, , j]) => { for (const x of j >= 0 ? [i, j] : [i]) tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (pos - 1) * last.step, 0.9); });
@@ -558,13 +560,20 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 }));
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
-$('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false };
+async function copyText(t, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch (e) {
+    try { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (e2) {}
+  }
+  const old = btn.textContent; btn.textContent = ok ? 'Kopyalandı' : 'Kopyalanamadı'; setTimeout(() => (btn.textContent = old === 'Kopyalandı' || old === 'Kopyalanamadı' ? 'Kopyala' : old), 1500);
+}
+$('copy').onclick = () => copyText($('code').value, $('copy'));
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
 };
-$('parts').addEventListener('click', e => { const k = e.target.dataset.part; if (k === undefined) return; navigator.clipboard.writeText(parts[+k]); e.target.textContent = 'Kopyalandı'; setTimeout(() => (e.target.textContent = 'Kopyala'), 1500); });
+$('parts').addEventListener('click', e => { const k = e.target.dataset.part; if (k === undefined) return; copyText(parts[+k], e.target); });
 $('play').onclick = play;
 $('stop').onclick = stop;
 run();
