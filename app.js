@@ -362,7 +362,8 @@ function build(notes, beat, force, o = {}) {
   const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0, chord: 0 };
   const trim = o.trim !== undefined ? o.trim : $('trim').checked, chordOn = $('chord').checked;
   const snap = $('snap').checked, gu = $('snap8').checked ? 0.5 : 0.25;
-  const unit = q => { const id = q * gu / speed / step; return $('snaptempo').checked ? Math.max(0.5, id) : Math.max(1, Math.round(id)); };
+  let dev = 0;
+  const unit = q => { const id = q * gu / speed / step; if ($('snaptempo').checked) return Math.max(0.5, id); const u = Math.max(1, Math.round(id)); dev = Math.max(dev, Math.abs(u / id - 1)); return u; };
   const mp = mapSeq(notes, set); let ix = 0;
   let cur = 0, curB = 0, prev = null, prevB = 0, P = 0, kPrev = 0, lastPos = 0, res = [];
   for (const n of notes) {
@@ -418,6 +419,7 @@ function build(notes, beat, force, o = {}) {
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const brief = `Ölçek: ${name}, ${outA.length} nota, yaklaşık ${secs} sn, ${st.near} nota yuvarlandı. ${trTxt}`;
   const w = [];
+  if (snap && dev > 0.03) w.push(`Izgara tam sayı adımla çalıştığı için hız ayarı küçük değişimlerde etkisiz kalıyor ve tempo yaklaşık %${Math.round(dev * 100)} sapıyor. Hızın çalışması için "Izgarada tempoyu koru" kutusunu işaretle.`);
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > outA.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - outA.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
   if (st.thin) w.push(`${st.thin} birbirine çok yakın nota, sesi temiz tutmak için elendi.`);
@@ -491,10 +493,16 @@ function run() {
 }
 
 // ---------- Dinleme ----------
-function stop() { oscs.forEach(o => { try { o.stop(); } catch (e) {} }); oscs = []; }
+let master = null;
+function ctx() { if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.connect(ac.destination); } return ac; }
+function stop() {
+  oscs.forEach(o => { try { o.stop(); } catch (e) {} try { o.disconnect(); } catch (e) {} }); oscs = [];
+  if (master) { try { master.gain.cancelScheduledValues(0); master.gain.value = 0; master.disconnect(); } catch (e) {} master = null; }
+  if (ac) { try { ac.close(); } catch (e) {} ac = null; }
+}
 function play() {
   stop(); if (!out.length) return;
-  ac = ac || new AudioContext();
+  ctx();
   const t0 = ac.currentTime + 0.1;
   out.forEach(([pos, i, , j]) => { for (const x of j >= 0 ? [i, j] : [i]) tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (pos - 1) * last.step, 0.9); });
 }
@@ -502,10 +510,10 @@ function tone(f, t, len) {
   const o = ac.createOscillator(), g = ac.createGain();
   o.type = 'triangle'; o.frequency.value = f;
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + len + 0.05); oscs.push(o);
+  o.connect(g).connect(master); o.start(t); o.stop(t + len + 0.05); oscs.push(o);
 }
 function preview(c) {
-  stop(); ac = ac || new AudioContext();
+  stop(); ctx();
   const a = midi.notes.filter(n => n.c === c), t0 = ac.currentTime + 0.1, s0 = sec(a[0].t);
   for (const n of a) {
     const s = sec(n.t) - s0; if (s > 12) break;
