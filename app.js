@@ -280,8 +280,13 @@ function mapSeq(notes, set) {
   });
 }
 
+let bestCache = { k: '', v: null };
+// Ölçek ve kök seçimi: önce nota uyumuna göre aday listesi, sonra uyumu birbirine yakın adaylar arasında melodi çizgisini en az bozan seçilir
 function best(ns, only) {
-  const h = {}, per = {}; ns.forEach(n => (h[n.p] = (h[n.p] || 0) + 1 + 2 * Math.min(n.d || 0, 1)));
+  let ck = only + '|' + ns.length + '|';
+  { let hs = 0; for (const n of ns) hs = (hs * 31 + n.p + Math.round(n.s * 10)) | 0; ck += hs; }
+  if (bestCache.k === ck) return bestCache.v;
+  const h = {}, per = {}, cands = []; ns.forEach(n => (h[n.p] = (h[n.p] || 0) + 1 + 2 * Math.min(n.d || 0, 1)));
   const ks = Object.keys(h).map(Number), lo = Math.min(...ks), hi = Math.max(...ks);
   let b = { sc: -1 };
   SCALES.forEach(([, iv], si) => {
@@ -290,10 +295,28 @@ function best(ns, only) {
       const set = iv.map(x => x + r); let sc = 0;
       for (const k of ks) { const f = fit(k, set)[1]; sc += h[k] * (f === 0 ? 1 : f === 1 ? 0.5 : 0); }
       if (!(per[si] >= sc)) per[si] = sc;
+      cands.push({ si, r, sc });
       if (sc > b.sc) b = { si, r, sc };
     }
   });
+  const sl = cands.filter(c => c.sc >= b.sc * 0.97).sort((x, y) => y.sc - x.sc).slice(0, 40);
+  if (sl.length > 1 && ns.length >= 2 && ns.length <= 6000) {
+    let bc = Infinity;
+    for (const c of sl) {
+      const set = SCALES[c.si][1].map(x => x + c.r), mp = mapSeq(ns, set);
+      let cost = 0, pq = null, pp = null;
+      mp.forEach(([j, k], i) => {
+        const q = set[j];
+        if (k === 2) cost += 6;
+        if (pq !== null) { const dq = q - pq, dp = ns[i].p - pp; cost += Math.abs(dq - dp) + (dp && dq && Math.sign(dp) !== Math.sign(dq) ? 3 : 0); }
+        pq = q; pp = ns[i].p;
+      });
+      cost -= (c.sc / b.sc) * 0.001;
+      if (cost < bc) { bc = cost; b = { si: c.si, r: c.r, sc: c.sc }; }
+    }
+  }
   b.per = per; b.tot = Object.values(h).reduce((x, y) => x + y, 0);
+  bestCache = { k: ck, v: b };
   return b;
 }
 
@@ -447,6 +470,7 @@ function renderParts(notes, beat, force, R) {
       `<textarea readonly rows="3" aria-label="Bölüm ${k + 1} kodu">${P.code}</textarea>` +
       `<div class="btns"><button type="button" class="alt" data-part="${k}">Kopyala</button></div><p class="hint">${P.brief}</p></div>`;
   }
+  if (tot >= R.st.near) { parts = []; box.innerHTML = `<p class="hint">Ton değişimi var ama bölmek yuvarlanan notayı azaltmıyor (tek kod: ${R.st.near}, bölümler: ${tot}). Tek kod yeterli.</p>`; return; }
   box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Tek kodda ${R.st.near} nota yuvarlanıyor, bölümlerde toplam ${tot}. Bölümleri oyunda sırayla çal.</p>` + html;
 }
 
@@ -502,7 +526,7 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'near', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '2', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
