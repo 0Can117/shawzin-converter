@@ -25,12 +25,12 @@ let xmlSrc = null, lastOrd = '';
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct', 'tbpm'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'dropout', 'spike', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
-function save() { try { localStorage.setItem('szv5', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
-try { const s = JSON.parse(localStorage.getItem('szv5') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
+function save() { try { localStorage.setItem('szv4', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
+try { const s = JSON.parse(localStorage.getItem('szv4') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
 
-document.querySelectorAll('select.c').forEach(s => { if (s.selectedIndex < 0) s.selectedIndex = 0; });
+if ($('cap').selectedIndex < 0) $('cap').value = '0';
 
 // ---------- MIDI okuma ----------
 function parseMidi(buf) {
@@ -224,7 +224,7 @@ function simple2text(s, o0) {
   const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const out = []; let prev = null;
   for (const k of s.split(/\s+/).filter(x => x && x !== '|')) {
-    if (k === '_') { if (out.length) out[out.length - 1] = out[out.length - 1].replace(/:(\d+)$/, (_, d) => ':' + (+d + 1)); continue; }
+    if (k === '_') { if (out.length) out[out.length - 1] = out[out.length - 1].replace(/:1$/, ':2'); continue; }
     if (k.toLowerCase() === 'r') { out.push('r:1'); continue; }
     const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d?)(_?)$/i.exec(k);
     if (!m) { out.push('?' + k); continue; }
@@ -261,17 +261,15 @@ function parseCode(s) {
   }
   return { notes: o, force: { si, r: g } };
 }
-function parseText(s, bt = 1) {
+function parseText(s) {
   const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   let t = 0; const o = []; bad = [];
-  s = s.replace(/\|:/g, ' |: ').replace(/:\|/g, ' :| ');
   for (const k of expand(s.split(/\s+/).filter(x => x && x !== '|'))) {
     const [x, d = '1'] = k.split(':');
     const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d)$/i.exec(x);
-    if (m) o.push({ s: t * bt, p: 12 * (+m[3] + 1) + B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) });
+    if (m) o.push({ s: t, p: 12 * (+m[3] + 1) + B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) });
     else if (x !== 'r' && x !== '~') bad.push(k);
-    const dm = /^(\d+(?:\.\d+)?)(\.|t)?$/.exec(d);
-    t += (dm ? +dm[1] * (dm[2] === '.' ? 1.5 : dm[2] === 't' ? 2 / 3 : 1) : 1) / 4;
+    t += (+d || 1) / 4;
   }
   return o;
 }
@@ -351,9 +349,8 @@ function getNotes() {
 }
 function getNotes0() {
   const v = document.querySelector('input[name=src]:checked').value;
-  const tb = +$('tbpm').value > 0 ? 60 / +$('tbpm').value : 1;
-  if (v === 'text') return { notes: parseText($('txt').value, tb), beat: tb };
-  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4), tb), beat: tb };
+  if (v === 'text') return { notes: parseText($('txt').value), beat: 1 };
+  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4)), beat: 1 };
   if (v === 'code') { const r = parseCode($('codeIn').value); return { notes: r.notes, beat: 8 * +$('mode').value, force: r.force }; }
   if (!midi) return { notes: [], beat: 1 };
   const ord = $('order').value.trim(), okey = ord + '|' + ($('padm').checked ? 1 : 0);
@@ -386,14 +383,29 @@ function build(notes, beat, force, o = {}) {
   const b = force ? { si: force.si, r: force.r } : best(notes, +$('scale').value);
   const [name, iv, gameRoot] = SCALES[b.si], set = iv.map(x => x + b.r);
   const speed = Math.max(0.1, +$('speed').value / 100), step = +$('mode').value, capB = +$('cap').value;
-  const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0, chord: 0 };
+  const st = { exact: 0, fold: 0, near: 0, push: 0, drop: 0, chord: 0, out: 0, spike: 0 };
+  if ($('dropout').checked) {
+    const lo = set[0], hi = set[set.length - 1], n0 = notes.length;
+    notes = notes.filter(n => n.p >= lo && n.p <= hi); st.out = n0 - notes.length;
+    if (!notes.length) return { code: '', list: '', out: [], last: { iv, gameRoot, step }, stats: `Tüm notalar ölçeğin dışında kaldı (${st.out} nota). "Pencere dışı notaları ele" kutusunu kapat ya da başka ölçek seç.`, brief: 'Tüm notalar pencere dışında.', warn: '', st };
+  }
   const trim = o.trim !== undefined ? o.trim : $('trim').checked, chordOn = $('chord').checked;
   const snap = $('snap').checked, gu = $('snap8').checked ? 0.5 : 0.25;
   let dev = 0;
   const unit = q => { const id = q * gu / speed / step; if ($('snaptempo').checked) return Math.max(0.5, id); const u = Math.max(1, Math.round(id)); dev = Math.max(dev, Math.abs(u / id - 1)); return u; };
   const mp = mapSeq(notes, set); let ix = 0;
+  // Ani sıçrayan nota: eşlemede bir yöne büyük sıçrayıp hemen geri dönen, oysa özgün melodide küçük adım olan nota
+  const spk = new Array(notes.length).fill(false);
+  if ($('spike').checked) {
+    const q = mp.map(([j]) => set[j]);
+    for (let i = 1; i < notes.length - 1; i++) {
+      const d1 = q[i] - q[i - 1], d2 = q[i + 1] - q[i];
+      if (Math.abs(d1) >= 9 && Math.abs(d2) >= 9 && Math.sign(d1) !== Math.sign(d2) && Math.abs(notes[i].p - notes[i - 1].p) <= 7 && Math.abs(notes[i + 1].p - notes[i].p) <= 7) spk[i] = true;
+    }
+  }
   let cur = 0, curB = 0, prev = null, prevB = 0, P = 0, kPrev = 0, lastPos = 0, res = [];
   for (const n of notes) {
+    if (spk[ix]) { ix++; st.spike++; continue; }
     let qi = n.q || beat;
     if (prev === null) { cur = trim ? 0 : n.s; curB = trim ? 0 : n.b; }
     else { const d = n.s - prev, db = n.b - prevB, cp = capB > 0 && db > capB; if (db > 1e-9) qi = d / db; cur += cp ? d * capB / db : d; curB += cp ? capB : db; }
@@ -434,7 +446,6 @@ function build(notes, beat, force, o = {}) {
     for (let k = 1; k < useRep; k++) for (const e of one) res.push([e[0] + k * span, ...e.slice(1)]);
   }
   const outA = res.filter(x => x[0] <= 4096);
-  if (!outA.length) return { code: '', list: '', out: [], last: null, stats: '', brief: '', warn: 'Hiçbir nota 4096 konum sınırına sığmadı. "Baştaki sessizliği kırp" kutusunu işaretle ya da başlangıç vuruşunu artır.', st };
   st.chord = outA.filter(x => x[3] >= 0).length;
   const enc = a => String(b.si + 1) + a.map(([p, i, , j]) => (j >= 0 ? chordChar(i, j) : NOTE_CHARS[i]) + B64[(p - 1) >> 6] + B64[(p - 1) & 63]).join('');
   const lst = a => a.map(([p, i, , j]) => p + String.fromCharCode(65 + i) + (j >= 0 ? '+' + String.fromCharCode(65 + j) : '')).join(',');
@@ -442,12 +453,13 @@ function build(notes, beat, force, o = {}) {
   const trTxt = tr ? `Oyunda ${Math.abs(tr)} yarım ses ${tr < 0 ? 'aşağıda' : 'yukarıda'} çalar.` : 'Oyunda orijinal perdede çalar.';
   const stats = `${outA.length} nota, yaklaşık ${secs} sn, ölçek: ${name}. ` +
     `${st.exact} nota birebir, ${st.fold} nota oktav kaydırıldı, ${st.near} nota en yakın notaya yuvarlandı. ` +
+    (st.out ? `${st.out} nota ölçeğin aralığı dışında kaldığı için elendi. ` : '') +
+    (st.spike ? `${st.spike} ani sıçrayan nota elendi. ` : '') +
     (st.chord ? `${st.chord} konumda akor kullanıldı. ` : '') +
     `Çeyrek nota yaklaşık ${(snap ? unit(notes[0].q || beat) / gu : (notes[0].q || beat) / speed / step).toFixed(1)} konum. ` + trTxt +
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const brief = `Ölçek: ${name}, ${outA.length} nota, yaklaşık ${secs} sn, ${st.near} nota yuvarlandı. ${trTxt}`;
   const w = [];
-  if (st.fold) w.push(`${st.fold} nota oktav kaydırıldı: şarkı seçilen ölçeğin 12 notalık aralığına sığmıyor. "Ton değişimini algıla" kutusunu işaretle, tiz ve pes kısımlar ayrı koda bölünür.`);
   if (snap && dev > 0.03) w.push(`Izgara tam sayı adımla çalıştığı için hız ayarı küçük değişimlerde etkisiz kalıyor ve tempo yaklaşık %${Math.round(dev * 100)} sapıyor. Hızın çalışması için "Izgarada tempoyu koru" kutusunu işaretle.`);
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > outA.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - outA.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
@@ -458,24 +470,22 @@ function build(notes, beat, force, o = {}) {
 }
 
 // Ton değişimi: notaları, her bölümde en az nota dışarıda kalacak şekilde parçalara böler
-function splitKeys(notes, abs) {
+function splitKeys(notes) {
   const n = notes.length; if (n < 40) return [0, n];
   const only = +$('scale').value;
-  const sis = only >= 0 ? [only] : SCALES.map((_, i) => i).filter(i => abs || SCALES[i][0] !== 'Chromatic');
-  const Z = abs ? 128 : 12, kf = p => (abs ? p : ((p % 12) + 12) % 12);
-  const H = [new Array(Z).fill(0)];
-  notes.forEach((x, i) => { const h = H[i].slice(); h[kf(x.p)]++; H.push(h); });
+  const sis = only >= 0 ? [only] : SCALES.map((_, i) => i).filter(i => SCALES[i][0] !== 'Chromatic');
+  const H = [new Array(12).fill(0)];
+  notes.forEach((x, i) => { const h = H[i].slice(); h[((x.p % 12) + 12) % 12]++; H.push(h); });
   const cov = [];
   for (const si of sis) {
-    const pcs = abs ? SCALES[si][1] : [...new Set(SCALES[si][1].map(v => v % 12))];
-    for (let r = 0; r < (abs ? 116 : 12); r++) cov.push(pcs.map(p => (abs ? p + r : (p + r) % 12)).filter(p => p < Z));
+    const pcs = [...new Set(SCALES[si][1].map(v => v % 12))];
+    for (let r = 0; r < 12; r++) { const m = new Array(12).fill(0); pcs.forEach(p => (m[(p + r) % 12] = 1)); cov.push(m); }
   }
-  const cost = (i, j) => { let bst = 0; for (const m of cov) { let c = 0; for (const k of m) c += H[j][k] - H[i][k]; if (c > bst) bst = c; } return (j - i) - bst; };
+  const cost = (i, j) => { let bst = 0; for (const m of cov) { let c = 0; for (let k = 0; k < 12; k++) if (m[k]) c += H[j][k] - H[i][k]; if (c > bst) bst = c; } return (j - i) - bst; };
   let cand = [0];
   for (let i = 1; i < n; i++) if (notes[i].b - notes[i - 1].b >= 1 || Math.floor(notes[i].b / 8) !== Math.floor(notes[i - 1].b / 8)) cand.push(i);
   cand.push(n);
-  const CM = abs ? 150 : 400;
-  if (cand.length > CM) { const s = Math.ceil(cand.length / CM); cand = cand.filter((_, k) => k % s === 0 || k === cand.length - 1); }
+  if (cand.length > 400) { const s = Math.ceil(cand.length / 400); cand = cand.filter((_, k) => k % s === 0 || k === cand.length - 1); }
   const LAM = 6, MIN = 12, f = [0], from = [0];
   for (let b = 1; b < cand.length; b++) {
     f[b] = Infinity;
@@ -492,21 +502,19 @@ function splitKeys(notes, abs) {
 function renderParts(notes, beat, force, R) {
   const box = $('parts'); parts = []; box.innerHTML = '';
   if (!$('autosplit').checked || force) return;
-  let cuts = splitKeys(notes);
-  if (cuts.length < 3) cuts = splitKeys(notes, true);
-  if (cuts.length < 3) { box.innerHTML = '<p class="hint">Ton ya da perde değişimi bulunamadı, tek kod yeterli.</p>'; return; }
-  const bd = x => x.near * 2 + x.fold;
+  const cuts = splitKeys(notes);
+  if (cuts.length < 3) { box.innerHTML = '<p class="hint">Ton değişimi bulunamadı, tek kod yeterli.</p>'; return; }
   let tot = 0, html = '';
   for (let k = 0; k + 1 < cuts.length; k++) {
     const sub = notes.slice(cuts[k], cuts[k + 1]);
     const P = build(sub, beat, null, { trim: true, noRep: true });
-    parts.push(P.code); tot += bd(P.st);
+    parts.push(P.code); tot += P.st.near;
     html += `<div class="part"><b>Bölüm ${k + 1}</b> <small>vuruş ${Math.round(sub[0].b)}-${Math.round(sub[sub.length - 1].b)}</small>` +
       `<textarea readonly rows="3" aria-label="Bölüm ${k + 1} kodu">${P.code}</textarea>` +
       `<div class="btns"><button type="button" class="alt" data-part="${k}">Kopyala</button></div><p class="hint">${P.brief}</p></div>`;
   }
-  if (tot >= bd(R.st)) { parts = []; box.innerHTML = `<p class="hint">Ton değişimi var ama bölmek yuvarlanan notayı azaltmıyor (tek kod: ${bd(R.st)}, bölümler: ${tot}; yuvarlanan nota 2, kayan nota 1 puan). Tek kod yeterli.</p>`; return; }
-  box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Sorunlu nota puanı tek kodda ${bd(R.st)}, bölümlerde toplam ${tot} (yuvarlanan nota 2, oktav kayan nota 1 puan). Bölümleri oyunda sırayla çal.</p>` + html;
+  if (tot >= R.st.near) { parts = []; box.innerHTML = `<p class="hint">Ton değişimi var ama bölmek yuvarlanan notayı azaltmıyor (tek kod: ${R.st.near}, bölümler: ${tot}). Tek kod yeterli.</p>`; return; }
+  box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Tek kodda ${R.st.near} nota yuvarlanıyor, bölümlerde toplam ${tot}. Bölümleri oyunda sırayla çal.</p>` + html;
 }
 
 function tempoInfo() {
@@ -522,7 +530,6 @@ function run() {
   if (!notes.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = 'Henüz nota yok. Bir MIDI dosyası yükle ya da nota yaz.'; $('warn').textContent = bd; out = []; return; }
   const R = build(notes, beat, force);
   out = R.out; last = R.last;
-  if (!R.out.length) { $('code').value = ''; $('list').value = ''; $('stats').textContent = ''; $('warn').textContent = bd + R.warn; return; }
   $('code').value = R.code; $('list').value = R.list; $('stats').textContent = R.stats + tempoInfo(); $('warn').textContent = bd + R.warn;
   renderParts(notes, beat, force, R);
 }
@@ -536,7 +543,7 @@ function stop() {
   if (ac) { try { ac.close(); } catch (e) {} ac = null; }
 }
 function play() {
-  stop(); if (!out.length || !last) return;
+  stop(); if (!out.length) return;
   ctx();
   const t0 = ac.currentTime + 0.1;
   out.forEach(([pos, i, , j]) => { for (const x of j >= 0 ? [i, j] : [i]) tone(440 * Math.pow(2, (last.gameRoot + last.iv[x] - 69) / 12), t0 + (pos - 1) * last.step, 0.9); });
@@ -568,20 +575,13 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 }));
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
-async function copyText(t, btn) {
-  let ok = false;
-  try { await navigator.clipboard.writeText(t); ok = true; } catch (e) {
-    try { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (e2) {}
-  }
-  const old = btn.textContent; btn.textContent = ok ? 'Kopyalandı' : 'Kopyalanamadı'; setTimeout(() => (btn.textContent = old === 'Kopyalandı' || old === 'Kopyalanamadı' ? 'Kopyala' : old), 1500);
-}
-$('copy').onclick = () => copyText($('code').value, $('copy'));
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false };
+$('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: true, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: true, minshort: false, dropout: false, spike: false };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
 };
-$('parts').addEventListener('click', e => { const k = e.target.dataset.part; if (k === undefined) return; copyText(parts[+k], e.target); });
+$('parts').addEventListener('click', e => { const k = e.target.dataset.part; if (k === undefined) return; navigator.clipboard.writeText(parts[+k]); e.target.textContent = 'Kopyalandı'; setTimeout(() => (e.target.textContent = 'Kopyala'), 1500); });
 $('play').onclick = play;
 $('stop').onclick = stop;
 run();
