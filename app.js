@@ -25,7 +25,7 @@ let xmlSrc = null, lastOrd = '';
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct', 'tbpm'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv5', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv5') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -261,15 +261,17 @@ function parseCode(s) {
   }
   return { notes: o, force: { si, r: g } };
 }
-function parseText(s) {
+function parseText(s, bt = 1) {
   const B = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11, c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   let t = 0; const o = []; bad = [];
+  s = s.replace(/\|:/g, ' |: ').replace(/:\|/g, ' :| ');
   for (const k of expand(s.split(/\s+/).filter(x => x && x !== '|'))) {
     const [x, d = '1'] = k.split(':');
     const m = /^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(\d)$/i.exec(x);
-    if (m) o.push({ s: t, p: 12 * (+m[3] + 1) + B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) });
+    if (m) o.push({ s: t * bt, p: 12 * (+m[3] + 1) + B[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) });
     else if (x !== 'r' && x !== '~') bad.push(k);
-    t += (+d || 1) / 4;
+    const dm = /^(\d+(?:\.\d+)?)(\.|t)?$/.exec(d);
+    t += (dm ? +dm[1] * (dm[2] === '.' ? 1.5 : dm[2] === 't' ? 2 / 3 : 1) : 1) / 4;
   }
   return o;
 }
@@ -349,8 +351,9 @@ function getNotes() {
 }
 function getNotes0() {
   const v = document.querySelector('input[name=src]:checked').value;
-  if (v === 'text') return { notes: parseText($('txt').value), beat: 1 };
-  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4)), beat: 1 };
+  const tb = +$('tbpm').value > 0 ? 60 / +$('tbpm').value : 1;
+  if (v === 'text') return { notes: parseText($('txt').value, tb), beat: tb };
+  if (v === 'simple') return { notes: parseText(simple2text($('simpleIn').value, +$('startOct').value || 4), tb), beat: tb };
   if (v === 'code') { const r = parseCode($('codeIn').value); return { notes: r.notes, beat: 8 * +$('mode').value, force: r.force }; }
   if (!midi) return { notes: [], beat: 1 };
   const ord = $('order').value.trim(), okey = ord + '|' + ($('padm').checked ? 1 : 0);
@@ -444,6 +447,7 @@ function build(notes, beat, force, o = {}) {
     (b.per ? ' Ölçek benzerliği: ' + Object.entries(b.per).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([si, sc]) => SCALES[si][0] + ' %' + Math.round(100 * sc / b.tot)).join(', ') + '.' : '');
   const brief = `Ölçek: ${name}, ${outA.length} nota, yaklaşık ${secs} sn, ${st.near} nota yuvarlandı. ${trTxt}`;
   const w = [];
+  if (st.fold) w.push(`${st.fold} nota oktav kaydırıldı: şarkı seçilen ölçeğin 12 notalık aralığına sığmıyor. "Ton değişimini algıla" kutusunu işaretle, tiz ve pes kısımlar ayrı koda bölünür.`);
   if (snap && dev > 0.03) w.push(`Izgara tam sayı adımla çalıştığı için hız ayarı küçük değişimlerde etkisiz kalıyor ve tempo yaklaşık %${Math.round(dev * 100)} sapıyor. Hızın çalışması için "Izgarada tempoyu koru" kutusunu işaretle.`);
   if (useRep < rep) w.push(`Tek kod 4096 konumla sınırlı olduğu için şarkı ${rep} kat yerine ${useRep} kat tekrarlandı.`);
   if (res.length > outA.length) w.push(`Şarkı 4096 konuma sığmadı, son ${res.length - outA.length} nota kesildi. Yavaş modu seç (oyunda da aç), hızı yükselt ya da boşluk sınırını düşür.`);
@@ -454,22 +458,24 @@ function build(notes, beat, force, o = {}) {
 }
 
 // Ton değişimi: notaları, her bölümde en az nota dışarıda kalacak şekilde parçalara böler
-function splitKeys(notes) {
+function splitKeys(notes, abs) {
   const n = notes.length; if (n < 40) return [0, n];
   const only = +$('scale').value;
-  const sis = only >= 0 ? [only] : SCALES.map((_, i) => i).filter(i => SCALES[i][0] !== 'Chromatic');
-  const H = [new Array(12).fill(0)];
-  notes.forEach((x, i) => { const h = H[i].slice(); h[((x.p % 12) + 12) % 12]++; H.push(h); });
+  const sis = only >= 0 ? [only] : SCALES.map((_, i) => i).filter(i => abs || SCALES[i][0] !== 'Chromatic');
+  const Z = abs ? 128 : 12, kf = p => (abs ? p : ((p % 12) + 12) % 12);
+  const H = [new Array(Z).fill(0)];
+  notes.forEach((x, i) => { const h = H[i].slice(); h[kf(x.p)]++; H.push(h); });
   const cov = [];
   for (const si of sis) {
-    const pcs = [...new Set(SCALES[si][1].map(v => v % 12))];
-    for (let r = 0; r < 12; r++) { const m = new Array(12).fill(0); pcs.forEach(p => (m[(p + r) % 12] = 1)); cov.push(m); }
+    const pcs = abs ? SCALES[si][1] : [...new Set(SCALES[si][1].map(v => v % 12))];
+    for (let r = 0; r < (abs ? 116 : 12); r++) cov.push(pcs.map(p => (abs ? p + r : (p + r) % 12)).filter(p => p < Z));
   }
-  const cost = (i, j) => { let bst = 0; for (const m of cov) { let c = 0; for (let k = 0; k < 12; k++) if (m[k]) c += H[j][k] - H[i][k]; if (c > bst) bst = c; } return (j - i) - bst; };
+  const cost = (i, j) => { let bst = 0; for (const m of cov) { let c = 0; for (const k of m) c += H[j][k] - H[i][k]; if (c > bst) bst = c; } return (j - i) - bst; };
   let cand = [0];
   for (let i = 1; i < n; i++) if (notes[i].b - notes[i - 1].b >= 1 || Math.floor(notes[i].b / 8) !== Math.floor(notes[i - 1].b / 8)) cand.push(i);
   cand.push(n);
-  if (cand.length > 400) { const s = Math.ceil(cand.length / 400); cand = cand.filter((_, k) => k % s === 0 || k === cand.length - 1); }
+  const CM = abs ? 150 : 400;
+  if (cand.length > CM) { const s = Math.ceil(cand.length / CM); cand = cand.filter((_, k) => k % s === 0 || k === cand.length - 1); }
   const LAM = 6, MIN = 12, f = [0], from = [0];
   for (let b = 1; b < cand.length; b++) {
     f[b] = Infinity;
@@ -486,19 +492,21 @@ function splitKeys(notes) {
 function renderParts(notes, beat, force, R) {
   const box = $('parts'); parts = []; box.innerHTML = '';
   if (!$('autosplit').checked || force) return;
-  const cuts = splitKeys(notes);
-  if (cuts.length < 3) { box.innerHTML = '<p class="hint">Ton değişimi bulunamadı, tek kod yeterli.</p>'; return; }
+  let cuts = splitKeys(notes);
+  if (cuts.length < 3) cuts = splitKeys(notes, true);
+  if (cuts.length < 3) { box.innerHTML = '<p class="hint">Ton ya da perde değişimi bulunamadı, tek kod yeterli.</p>'; return; }
+  const bd = x => x.near * 2 + x.fold;
   let tot = 0, html = '';
   for (let k = 0; k + 1 < cuts.length; k++) {
     const sub = notes.slice(cuts[k], cuts[k + 1]);
     const P = build(sub, beat, null, { trim: true, noRep: true });
-    parts.push(P.code); tot += P.st.near;
+    parts.push(P.code); tot += bd(P.st);
     html += `<div class="part"><b>Bölüm ${k + 1}</b> <small>vuruş ${Math.round(sub[0].b)}-${Math.round(sub[sub.length - 1].b)}</small>` +
       `<textarea readonly rows="3" aria-label="Bölüm ${k + 1} kodu">${P.code}</textarea>` +
       `<div class="btns"><button type="button" class="alt" data-part="${k}">Kopyala</button></div><p class="hint">${P.brief}</p></div>`;
   }
-  if (tot >= R.st.near) { parts = []; box.innerHTML = `<p class="hint">Ton değişimi var ama bölmek yuvarlanan notayı azaltmıyor (tek kod: ${R.st.near}, bölümler: ${tot}). Tek kod yeterli.</p>`; return; }
-  box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Tek kodda ${R.st.near} nota yuvarlanıyor, bölümlerde toplam ${tot}. Bölümleri oyunda sırayla çal.</p>` + html;
+  if (tot >= bd(R.st)) { parts = []; box.innerHTML = `<p class="hint">Ton değişimi var ama bölmek yuvarlanan notayı azaltmıyor (tek kod: ${bd(R.st)}, bölümler: ${tot}; yuvarlanan nota 2, kayan nota 1 puan). Tek kod yeterli.</p>`; return; }
+  box.innerHTML = `<p class="hint">Ton değişimi bulundu, ${parts.length} bölüm. Sorunlu nota puanı tek kodda ${bd(R.st)}, bölümlerde toplam ${tot} (yuvarlanan nota 2, oktav kayan nota 1 puan). Bölümleri oyunda sırayla çal.</p>` + html;
 }
 
 function tempoInfo() {
