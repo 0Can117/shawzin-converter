@@ -112,7 +112,7 @@ function playOrder(ms) {
     o.push(i);
     const nx = ms[i + 1];
     if (m.back && pass < m.times) { pass++; i = start; continue; }
-    if (m.back || (m.ends && !(nx && nx.ends))) pass = 1;
+    if (m.back || (m.ends && !(nx && nx.ends))) { pass = 1; start = i + 1; }
     i++;
   }
   return o;
