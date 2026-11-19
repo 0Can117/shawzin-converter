@@ -25,7 +25,7 @@ let xmlSrc = null, lastOrd = '';
 let midi = null, sec = null, out = [], last = null, ac = null, oscs = [];
 
 SCALES.forEach(([n], i) => $('scale').add(new Option(n, i)));
-const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'dropout', 'spike', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
+const KEYS = ['scale', 'speed', 'mode', 'cap', 'maxdur', 'trim', 'mono', 'snap', 'pick', 'chord', 'autosplit', 'snap8', 'snapdrop', 'snaptempo', 'minshort', 'dropout', 'spike', 'ctxfold', 'from', 'to', 'shifts', 'rep', 'clean', 'startOct'];
 const val = k => ($(k).type === 'checkbox' ? $(k).checked : $(k).value);
 function save() { try { localStorage.setItem('szv5', JSON.stringify(Object.fromEntries(KEYS.map(k => [k, val(k)])))); } catch (e) {} }
 try { const s = JSON.parse(localStorage.getItem('szv5') || '{}'); KEYS.forEach(k => { if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; } }); } catch (e) {}
@@ -285,7 +285,7 @@ function fit(p, set) {
   return [bi, 2];
 }
 
-function mapSeq(notes, set) {
+function mapSeqGreedy(notes, set) {
   let pq = null, pp = null;
   return notes.map(n => {
     let bi = -1, bc = 1e9;
@@ -300,10 +300,38 @@ function mapSeq(notes, set) {
   });
 }
 
+// Cümle duyarlı eşleme: tüm diziye birden bakar (dinamik programlama).
+// Nota ölçeğin aralığına sığmayınca oktav kaydırılır; bu kaydırma tek tek değil, cümle boyunca tutarlı seçilir.
+// Oktav değişimi mümkünse uzun bir boşlukta (cümle sınırında) olur, cümle ortasında tek başına tiz/pes nota kalmaz.
+function mapSeqDP(notes, set) {
+  const n = notes.length, K = set.length; if (!n) return [];
+  const st = (i, j) => { const e = ((set[j] - notes[i].p) % 12 + 12) % 12, pe = Math.min(e, 12 - e); return pe * 16 + Math.abs(set[j] - notes[i].p) * 0.001; };
+  const cost = [Array.from({ length: K }, (_, j) => st(0, j))], from = [new Array(K).fill(-1)];
+  for (let i = 1; i < n; i++) {
+    const c = new Array(K), f = new Array(K), dp = notes[i].p - notes[i - 1].p;
+    const gap = Math.max(0, (notes[i].b - notes[i - 1].b) || 0), gf = 1 / (1 + gap * gap);
+    for (let j = 0; j < K; j++) {
+      let bc = Infinity, bf = 0;
+      for (let k = 0; k < K; k++) {
+        const dq = set[j] - set[k], lp = Math.max(0, Math.abs(dq) - 7) * 0.5;
+        const t = cost[i - 1][k] + (Math.abs(dq - dp) + lp) * gf;
+        if (t < bc) { bc = t; bf = k; }
+      }
+      c[j] = bc + st(i, j); f[j] = bf;
+    }
+    cost.push(c); from.push(f);
+  }
+  let j = 0; for (let k = 1; k < K; k++) if (cost[n - 1][k] < cost[n - 1][j]) j = k;
+  const res = new Array(n);
+  for (let i = n - 1; i >= 0; i--) { const q = set[j]; res[i] = [j, q === notes[i].p ? 0 : (q - notes[i].p) % 12 === 0 ? 1 : 2]; j = from[i][j]; }
+  return res;
+}
+const mapSeq = (notes, set) => ($('ctxfold').checked ? mapSeqDP : mapSeqGreedy)(notes, set);
+
 let bestCache = { k: '', v: null };
 // Ölçek ve kök seçimi: önce nota uyumuna göre aday listesi, sonra uyumu birbirine yakın adaylar arasında melodi çizgisini en az bozan seçilir
 function best(ns, only) {
-  let ck = only + '|' + ns.length + '|';
+  let ck = only + '|' + ($('ctxfold').checked ? 1 : 0) + '|' + ns.length + '|';
   { let hs = 0; for (const n of ns) hs = (hs * 31 + n.p + Math.round(n.s * 10)) | 0; ck += hs; }
   if (bestCache.k === ck) return bestCache.v;
   const h = {}, per = {}, cands = []; ns.forEach(n => (h[n.p] = (h[n.p] || 0) + 1 + 2 * Math.min(n.d || 0, 1)));
@@ -576,7 +604,7 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
 document.body.addEventListener('input', e => { if (e.target.classList.contains('c')) { save(); run(); } });
 $('chans').addEventListener('click', e => { if (e.target.dataset.pv) preview(+e.target.dataset.pv); });
 $('copy').onclick = () => { navigator.clipboard.writeText($('code').value); $('copy').textContent = 'Kopyalandı'; setTimeout(() => ($('copy').textContent = 'Kopyala'), 1500); };
-const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false, dropout: false, spike: false };
+const DEF = { scale: '-1', speed: '100', mode: '0.0625', cap: '0', maxdur: '0', clean: '0', rep: '1', from: '0', to: '0', shifts: '', startOct: '4', trim: true, mono: true, snap: false, pick: 'high', chord: false, autosplit: false, snap8: false, snapdrop: false, snaptempo: false, minshort: false, dropout: false, spike: false, ctxfold: true };
 $('reset').onclick = () => {
   for (const k in DEF) { if ($(k).type === 'checkbox') $(k).checked = DEF[k]; else $(k).value = DEF[k]; }
   save(); run();
